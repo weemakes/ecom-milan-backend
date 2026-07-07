@@ -1,0 +1,549 @@
+-- Enable UUID extension if not already enabled
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Function to automatically update updated_at column
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata';
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- ============================================
+-- EXISTING TABLES (VENDORS, USERS, CATEGORIES, PRODUCTS)
+-- ============================================
+
+-- VENDORS TABLE
+CREATE TABLE vendors (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    phone VARCHAR(20) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    gst_number VARCHAR(50) UNIQUE,
+    current_address TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
+);
+
+CREATE TRIGGER update_vendors_updated_at 
+BEFORE UPDATE ON vendors 
+FOR EACH ROW 
+EXECUTE FUNCTION update_updated_at_column();
+
+-- USERS TABLE
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    username VARCHAR(100) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    phone VARCHAR(20) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    otp VARCHAR(6),
+    otp_expiry TIMESTAMP WITH TIME ZONE,
+    current_address TEXT,
+    is_verified BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
+);
+
+CREATE TRIGGER update_users_updated_at 
+BEFORE UPDATE ON users 
+FOR EACH ROW 
+EXECUTE FUNCTION update_updated_at_column();
+
+-- PRODUCT CATEGORIES TABLE
+CREATE TABLE product_categories (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    category_name VARCHAR(100) NOT NULL UNIQUE,
+    category_slug VARCHAR(100) UNIQUE NOT NULL,
+    category_description TEXT,
+    parent_category_id UUID REFERENCES product_categories(id),
+    vendor_id UUID REFERENCES vendors(id) ON DELETE SET NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
+);
+
+CREATE TRIGGER update_product_categories_updated_at 
+BEFORE UPDATE ON product_categories 
+FOR EACH ROW 
+EXECUTE FUNCTION update_updated_at_column();
+
+-- PRODUCT DETAILS TABLE
+CREATE TABLE product_details (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_name VARCHAR(255) NOT NULL,
+    product_slug VARCHAR(255) UNIQUE NOT NULL,
+    category_id UUID NOT NULL REFERENCES product_categories(id) ON DELETE RESTRICT,
+    vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    description TEXT,
+    price DECIMAL(10, 2) NOT NULL CHECK (price >= 0),
+    discounted_price DECIMAL(10, 2) CHECK (discounted_price >= 0),
+    quantity_in_stock INTEGER DEFAULT 0 CHECK (quantity_in_stock >= 0),
+    sku VARCHAR(100) UNIQUE,
+    is_active BOOLEAN DEFAULT TRUE,
+    is_featured BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
+);
+
+CREATE TRIGGER update_product_details_updated_at 
+BEFORE UPDATE ON product_details 
+FOR EACH ROW 
+EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
+-- 1. USER WISHLIST TABLE
+-- ============================================
+CREATE TABLE user_wishlist (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES product_details(id) ON DELETE CASCADE,
+    added_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    notes TEXT, -- User can add notes like "birthday gift", "buy next month", etc.
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    CONSTRAINT unique_user_product_wishlist UNIQUE (user_id, product_id)
+);
+
+CREATE TRIGGER update_user_wishlist_updated_at 
+BEFORE UPDATE ON user_wishlist 
+FOR EACH ROW 
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_wishlist_user_id ON user_wishlist(user_id);
+CREATE INDEX idx_wishlist_product_id ON user_wishlist(product_id);
+
+-- ============================================
+-- 2. CART TABLE (Single entry per user with JSONB)
+-- ============================================
+CREATE TABLE cart (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    items JSONB NOT NULL DEFAULT '[]'::jsonb,
+    -- Format: [
+    --   {
+    --     "product_id": "uuid",
+    --     "product_name": "Classic White Shirt",
+    --     "quantity": 2,
+    --     "price": 1499.00,
+    --     "discounted_price": 1199.00,
+    --     "vendor_id": "uuid",
+    --     "vendor_name": "Fashion Hub",
+    --     "selected_attributes": {"size": "L", "color": "White"},
+    --     "applied_coupon": "SAVE10",  -- Coupon applied to this specific product
+    --     "discount_amount": 149.90,
+    --     "final_price": 1049.10
+    --   }
+    -- ]
+    applied_coupon_code VARCHAR(50), -- Global coupon applied to entire cart
+    coupon_discount_amount DECIMAL(10, 2) DEFAULT 0, -- Total discount from global coupon
+    subtotal DECIMAL(10, 2) DEFAULT 0,
+    total_discount DECIMAL(10, 2) DEFAULT 0,
+    grand_total DECIMAL(10, 2) DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
+);
+
+CREATE TRIGGER update_cart_updated_at 
+BEFORE UPDATE ON cart 
+FOR EACH ROW 
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_cart_user_id ON cart(user_id);
+
+-- ============================================
+-- 3. COUPONS AND PROMOCODES TABLE
+-- ============================================
+CREATE TABLE coupons (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code VARCHAR(50) UNIQUE NOT NULL,
+    description TEXT,
+    discount_type VARCHAR(20) NOT NULL CHECK (discount_type IN ('PERCENTAGE', 'FIXED_AMOUNT')),
+    discount_value DECIMAL(10, 2) NOT NULL CHECK (discount_value >= 0),
+    minimum_order_amount DECIMAL(10, 2) DEFAULT 0,
+    maximum_discount_amount DECIMAL(10, 2), -- For percentage coupons
+    valid_from TIMESTAMP WITH TIME ZONE NOT NULL,
+    valid_until TIMESTAMP WITH TIME ZONE NOT NULL,
+    usage_limit_per_user INTEGER DEFAULT 1,
+    usage_limit_total INTEGER DEFAULT 0, -- 0 means unlimited
+    usage_count_total INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    -- For product/vendor specific coupons
+    applicable_to VARCHAR(20) DEFAULT 'ALL' CHECK (applicable_to IN ('ALL', 'SPECIFIC_VENDOR', 'SPECIFIC_CATEGORY', 'SPECIFIC_PRODUCT')),
+    vendor_id UUID REFERENCES vendors(id) ON DELETE CASCADE,
+    category_id UUID REFERENCES product_categories(id) ON DELETE CASCADE,
+    product_id UUID REFERENCES product_details(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
+);
+
+CREATE TRIGGER update_coupons_updated_at 
+BEFORE UPDATE ON coupons 
+FOR EACH ROW 
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_coupons_code ON coupons(code);
+CREATE INDEX idx_coupons_valid_date ON coupons(valid_from, valid_until);
+CREATE INDEX idx_coupons_vendor_id ON coupons(vendor_id);
+
+-- ============================================
+-- 4. USER COUPON USAGE TABLE (Track who used which coupon)
+-- ============================================
+CREATE TABLE user_coupon_usage (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    coupon_id UUID NOT NULL REFERENCES coupons(id) ON DELETE CASCADE,
+    order_id UUID, -- Will reference orders table
+    used_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    discount_amount DECIMAL(10, 2) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    CONSTRAINT unique_user_coupon UNIQUE (user_id, coupon_id)
+);
+
+CREATE TRIGGER update_user_coupon_usage_updated_at 
+BEFORE UPDATE ON user_coupon_usage 
+FOR EACH ROW 
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_user_coupon_user_id ON user_coupon_usage(user_id);
+CREATE INDEX idx_user_coupon_coupon_id ON user_coupon_usage(coupon_id);
+
+-- ============================================
+-- 5. USERS PAYMENT AND PURCHASE TABLE (ORDERS)
+-- ============================================
+CREATE TABLE orders (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_number VARCHAR(50) UNIQUE NOT NULL,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    vendor_id UUID REFERENCES vendors(id) ON DELETE SET NULL, -- Multiple vendors per order
+    items JSONB NOT NULL, -- Stores products in JSON format
+    subtotal DECIMAL(10, 2) NOT NULL DEFAULT 0,
+    total_discount DECIMAL(10, 2) DEFAULT 0,
+    coupon_discount DECIMAL(10, 2) DEFAULT 0,
+    shipping_charge DECIMAL(10, 2) DEFAULT 0,
+    tax_amount DECIMAL(10, 2) DEFAULT 0,
+    grand_total DECIMAL(10, 2) NOT NULL DEFAULT 0,
+    
+    -- Shipping details
+    shipping_address JSONB NOT NULL,
+    delivery_instructions TEXT,
+    
+    -- Payment details
+    payment_method VARCHAR(50) NOT NULL CHECK (payment_method IN ('COD', 'CARD', 'UPI', 'NET_BANKING', 'WALLET')),
+    payment_status VARCHAR(50) DEFAULT 'PENDING' CHECK (payment_status IN ('PENDING', 'PAID', 'FAILED', 'REFUNDED')),
+    payment_transaction_id VARCHAR(255),
+    payment_details JSONB, -- Store payment gateway response
+    
+    -- Order status
+    order_status VARCHAR(50) DEFAULT 'PLACED' CHECK (order_status IN ('PLACED', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNED')),
+    order_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    delivered_at TIMESTAMP WITH TIME ZONE,
+    cancelled_at TIMESTAMP WITH TIME ZONE,
+    cancellation_reason TEXT,
+    
+    -- Coupon applied to entire order
+    applied_coupon_id UUID REFERENCES coupons(id) ON DELETE SET NULL,
+    applied_coupon_code VARCHAR(50),
+    
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
+);
+
+CREATE TRIGGER update_orders_updated_at 
+BEFORE UPDATE ON orders 
+FOR EACH ROW 
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_orders_user_id ON orders(user_id);
+CREATE INDEX idx_orders_vendor_id ON orders(vendor_id);
+CREATE INDEX idx_orders_order_number ON orders(order_number);
+CREATE INDEX idx_orders_status ON orders(order_status);
+CREATE INDEX idx_orders_date ON orders(order_date);
+
+-- ============================================
+-- 6. USER PRODUCT HISTORY TABLE (For customer analytics)
+-- ============================================
+CREATE TABLE user_product_history (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES product_details(id) ON DELETE CASCADE,
+    order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+    purchase_count INTEGER DEFAULT 1,
+    last_purchased_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    total_spent DECIMAL(10, 2) DEFAULT 0,
+    -- Ratings and reviews
+    rating INTEGER CHECK (rating >= 1 AND rating <= 5),
+    review TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    CONSTRAINT unique_user_product_history UNIQUE (user_id, product_id)
+);
+
+CREATE TRIGGER update_user_product_history_updated_at 
+BEFORE UPDATE ON user_product_history 
+FOR EACH ROW 
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_user_history_user_id ON user_product_history(user_id);
+CREATE INDEX idx_user_history_product_id ON user_product_history(product_id);
+CREATE INDEX idx_user_history_last_purchased ON user_product_history(last_purchased_at);
+
+-- ============================================
+-- 7. VENDOR PAYMENT TABLE (Payments to vendors)
+-- ============================================
+CREATE TABLE vendor_payments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+    invoice_number VARCHAR(50) UNIQUE NOT NULL,
+    
+    -- Payment details
+    total_order_amount DECIMAL(10, 2) NOT NULL,
+    platform_commission DECIMAL(10, 2) NOT NULL, -- Platform's commission
+    commission_percentage DECIMAL(5, 2) NOT NULL, -- Commission percentage
+    gst_on_commission DECIMAL(10, 2) DEFAULT 0,
+    tds DECIMAL(10, 2) DEFAULT 0, -- Tax Deducted at Source
+    payment_amount DECIMAL(10, 2) NOT NULL, -- Final amount to be paid
+    payment_note TEXT,
+    
+    -- Payment status
+    payment_status VARCHAR(50) DEFAULT 'PENDING' CHECK (payment_status IN ('PENDING', 'PROCESSING', 'PAID', 'FAILED', 'HOLD')),
+    payment_method VARCHAR(50) CHECK (payment_method IN ('BANK_TRANSFER', 'UPI', 'CHEQUE', 'CASH')),
+    payment_date TIMESTAMP WITH TIME ZONE,
+    transaction_reference VARCHAR(255),
+    
+    -- Payment cycle
+    payment_cycle_from TIMESTAMP WITH TIME ZONE,
+    payment_cycle_to TIMESTAMP WITH TIME ZONE,
+    
+    bank_account_details JSONB, -- Store vendor's bank details for payment
+    payment_response JSONB, -- Store payment gateway response if any
+    
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
+);
+
+CREATE TRIGGER update_vendor_payments_updated_at 
+BEFORE UPDATE ON vendor_payments 
+FOR EACH ROW 
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_vendor_payments_vendor_id ON vendor_payments(vendor_id);
+CREATE INDEX idx_vendor_payments_order_id ON vendor_payments(order_id);
+CREATE INDEX idx_vendor_payments_invoice ON vendor_payments(invoice_number);
+CREATE INDEX idx_vendor_payments_status ON vendor_payments(payment_status);
+
+-- ============================================
+-- 8. PRODUCT REVIEWS TABLE (Optional but recommended)
+-- ============================================
+CREATE TABLE product_reviews (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES product_details(id) ON DELETE CASCADE,
+    order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    title VARCHAR(255),
+    review_text TEXT,
+    is_verified_purchase BOOLEAN DEFAULT FALSE,
+    images JSONB DEFAULT '[]'::jsonb,
+    is_approved BOOLEAN DEFAULT FALSE,
+    helpful_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    CONSTRAINT unique_user_product_review UNIQUE (user_id, product_id)
+);
+
+CREATE TRIGGER update_product_reviews_updated_at 
+BEFORE UPDATE ON product_reviews 
+FOR EACH ROW 
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE INDEX idx_reviews_product_id ON product_reviews(product_id);
+CREATE INDEX idx_reviews_user_id ON product_reviews(user_id);
+CREATE INDEX idx_reviews_rating ON product_reviews(rating);
+
+-- ============================================
+-- SAMPLE INSERT QUERIES
+-- ============================================
+
+-- Insert into wishlist
+INSERT INTO user_wishlist (user_id, product_id, notes) 
+VALUES (
+    'user_uuid_here',
+    'product_uuid_here',
+    'Birthday gift for my brother'
+);
+
+-- Insert into cart
+INSERT INTO cart (user_id, items) 
+VALUES (
+    'user_uuid_here',
+    '[
+        {
+            "product_id": "product_uuid_1",
+            "product_name": "Classic White Shirt",
+            "quantity": 2,
+            "price": 1499.00,
+            "discounted_price": 1199.00,
+            "vendor_id": "vendor_uuid_here",
+            "vendor_name": "Fashion Hub",
+            "selected_attributes": {"size": "L", "color": "White"},
+            "applied_coupon": null,
+            "discount_amount": 0,
+            "final_price": 1199.00
+        }
+    ]'::jsonb
+);
+
+-- Insert a coupon
+INSERT INTO coupons (
+    code,
+    description,
+    discount_type,
+    discount_value,
+    minimum_order_amount,
+    maximum_discount_amount,
+    valid_from,
+    valid_until,
+    usage_limit_per_user,
+    usage_limit_total
+) VALUES (
+    'SAVE20',
+    'Get 20% off on all orders above ₹500',
+    'PERCENTAGE',
+    20.00,
+    500.00,
+    500.00,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP + INTERVAL '30 days',
+    1,
+    100
+);
+
+-- Insert an order
+INSERT INTO orders (
+    order_number,
+    user_id,
+    vendor_id,
+    items,
+    subtotal,
+    total_discount,
+    coupon_discount,
+    shipping_charge,
+    tax_amount,
+    grand_total,
+    shipping_address,
+    payment_method,
+    applied_coupon_code
+) VALUES (
+    'ORD-2024-001',
+    'user_uuid_here',
+    'vendor_uuid_here',
+    '[
+        {
+            "product_id": "product_uuid_1",
+            "product_name": "Classic White Shirt",
+            "quantity": 2,
+            "price": 1499.00,
+            "discounted_price": 1199.00
+        }
+    ]'::jsonb,
+    2998.00,
+    600.00,
+    0,
+    50.00,
+    200.00,
+    2648.00,
+    '{"address": "123, Main Street, Mumbai", "pincode": "400001", "phone": "+919876543210"}'::jsonb,
+    'CARD',
+    NULL
+);
+
+-- Insert vendor payment
+INSERT INTO vendor_payments (
+    vendor_id,
+    order_id,
+    invoice_number,
+    total_order_amount,
+    platform_commission,
+    commission_percentage,
+    gst_on_commission,
+    tds,
+    payment_amount,
+    payment_status,
+    payment_cycle_from,
+    payment_cycle_to
+) VALUES (
+    'vendor_uuid_here',
+    'order_uuid_here',
+    'INV-2024-001',
+    2998.00,
+    299.80,
+    10.00,
+    53.96,
+    29.98,
+    2614.26,
+    'PENDING',
+    CURRENT_DATE - INTERVAL '30 days',
+    CURRENT_DATE
+);
+
+-- ============================================
+-- USEFUL QUERIES
+-- ============================================
+
+-- Get user's cart with all items
+SELECT 
+    u.username,
+    c.items,
+    c.subtotal,
+    c.total_discount,
+    c.coupon_discount_amount,
+    c.grand_total,
+    c.applied_coupon_code
+FROM cart c
+JOIN users u ON u.id = c.user_id
+WHERE c.user_id = 'user_uuid_here' AND c.is_active = true;
+
+-- Get user's order history with product names
+SELECT 
+    o.order_number,
+    o.order_date,
+    o.grand_total,
+    o.order_status,
+    p.product_name,
+    p.price
+FROM orders o
+CROSS JOIN LATERAL jsonb_array_elements(o.items) AS items
+JOIN product_details p ON p.id = (items->>'product_id')::uuid
+WHERE o.user_id = 'user_uuid_here'
+ORDER BY o.order_date DESC;
+
+-- Get vendor payment summary
+SELECT 
+    v.name,
+    COUNT(vp.id) as total_transactions,
+    SUM(vp.total_order_amount) as total_order_amount,
+    SUM(vp.platform_commission) as total_commission,
+    SUM(vp.payment_amount) as total_payable
+FROM vendor_payments vp
+JOIN vendors v ON v.id = vp.vendor_id
+WHERE vp.payment_status = 'PENDING'
+GROUP BY v.id, v.name;
+
+-- Get product-wise purchase history
+SELECT 
+    p.product_name,
+    COUNT(ph.id) as total_purchases,
+    SUM(ph.purchase_count) as total_quantity_sold,
+    SUM(ph.total_spent) as total_revenue
+FROM user_product_history ph
+JOIN product_details p ON p.id = ph.product_id
+GROUP BY p.id, p.product_name
+ORDER BY total_revenue DESC;
