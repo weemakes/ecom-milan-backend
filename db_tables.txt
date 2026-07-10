@@ -66,6 +66,7 @@ CREATE TABLE product_categories (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
 );
+Alter Table product_categories  Add Column category_img text NOT NULL;
 
 CREATE TRIGGER update_product_categories_updated_at 
 BEFORE UPDATE ON product_categories 
@@ -73,6 +74,43 @@ FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
 
 -- PRODUCT DETAILS TABLE
+Add on  column new product_details
+CREATE TABLE product_details (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    product_name VARCHAR(255) NOT NULL,
+    product_slug VARCHAR(255) UNIQUE NOT NULL,
+
+    category_id UUID NOT NULL REFERENCES product_categories(id) ON DELETE RESTRICT,
+    vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+
+    description TEXT,
+
+    price DECIMAL(10,2) NOT NULL CHECK (price >= 0),
+    discounted_price DECIMAL(10,2) CHECK (discounted_price >= 0),
+
+    quantity_in_stock INTEGER DEFAULT 0 CHECK (quantity_in_stock >= 0),
+
+    sku VARCHAR(100) UNIQUE,
+
+    -- Occasion
+    occasion VARCHAR(100),
+
+    -- Landing Page Section
+    landing_section landing_section_enum,
+
+    -- Featured Section
+    featured_type featured_type_enum DEFAULT 'TOP_PICKS',
+        images text[] COLLATE pg_catalog."default" DEFAULT '{}'::text[],
+    variants jsonb DEFAULT '[]'::jsonb,
+
+
+    is_active BOOLEAN DEFAULT TRUE,
+    is_featured BOOLEAN DEFAULT FALSE,
+
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
+);
 CREATE TABLE product_details (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     product_name VARCHAR(255) NOT NULL,
@@ -89,7 +127,7 @@ CREATE TABLE product_details (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
 );
-
+Alter Table product_details  Add Column featured_type enum ('toppicks','2','3') DEFAULT '1';
 CREATE TRIGGER update_product_details_updated_at 
 BEFORE UPDATE ON product_details 
 FOR EACH ROW 
