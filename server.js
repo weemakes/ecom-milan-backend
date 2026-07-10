@@ -6,6 +6,7 @@ import { initDb } from './config/initDb.js';
 import vendorRoutes from './routes/vendorRoutes.js';
 import cmsRoutes from './routes/cmsRoutes.js';
 import storeRoutes from './routes/storeRoutes.js';
+import productRoutes from './routes/productRoutes.js';
 
 dotenv.config();
 
@@ -24,6 +25,7 @@ initDb();
 app.use('/api/vendor', vendorRoutes);
 app.use('/api/cms', cmsRoutes);
 app.use('/api/store', storeRoutes);
+app.use('/api/products', productRoutes);
 
 // Basic Routes
 app.get('/', (req, res) => {

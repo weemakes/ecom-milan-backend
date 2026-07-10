@@ -76,41 +76,6 @@ export const getLiveStorefrontProducts = async (req, res, next) => {
   }
 };
 
-/**
- * @desc    Get single product details for customer website
- * @route   GET /api/store/products/:product_id
- * @access  Public
- */
-export const getStorefrontProductDetails = async (req, res, next) => {
-  try {
-    const { product_id } = req.params;
-
-    const sql = `
-      SELECT 
-        p.id, p.name, p.description, 
-        p.platform_selling_price AS price,
-        p.enhanced_images AS images,
-        p.variants,
-        c.name AS category_name
-      FROM products p
-      LEFT JOIN categories c ON p.category_id = c.id
-      WHERE p.id = $1 AND p.status = 'APPROVED';
-    `;
-
-    const result = await query(sql, [product_id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ status: 'error', message: 'Product not found or not active' });
-    }
-
-    return res.status(200).json({
-      status: 'success',
-      data: result.rows[0]
-    });
-  } catch (err) {
-    next(err);
-  }
-};
 
 /**
  * @desc    Create a customer order on the website and record items per vendor

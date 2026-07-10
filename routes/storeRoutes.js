@@ -2,7 +2,6 @@ import express from 'express';
 import { 
   getStorefrontCategories, 
   getLiveStorefrontProducts, 
-  getStorefrontProductDetails,
   createCustomerOrder 
 } from '../controllers/storeController.js';
 
@@ -32,14 +31,6 @@ router.get('/categories', getStorefrontCategories);
  * @access  Public
  */
 router.get('/products', getLiveStorefrontProducts);
-
-/**
- * @route   GET /api/store/products/:product_id
- * @desc    Get full details (professional images, variants, price) of a single approved product.
- * @params  product_id - UUID of the product
- * @access  Public
- */
-router.get('/products/:product_id', getStorefrontProductDetails);
 
 /**
  * @route   POST /api/store/orders
