@@ -7,6 +7,8 @@ import vendorRoutes from './routes/vendorRoutes.js';
 import cmsRoutes from './routes/cmsRoutes.js';
 import storeRoutes from './routes/storeRoutes.js';
 import productRoutes from './routes/productRoutes.js';
+import categoryRoutes from './routes/categoryRoutes.js';
+import vendorCrudRoutes from './routes/vendorCrudRoutes.js';
 
 dotenv.config();
 
@@ -15,8 +17,8 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Initialize PostgreSQL Database tables
 initDb();
@@ -26,6 +28,8 @@ app.use('/api/vendor', vendorRoutes);
 app.use('/api/cms', cmsRoutes);
 app.use('/api/store', storeRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/vendors', vendorCrudRoutes);
 
 // Basic Routes
 app.get('/', (req, res) => {

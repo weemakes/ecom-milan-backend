@@ -142,6 +142,56 @@ export const initDb = async () => {
       );
     `);
 
+    // 10. Product Categories Table
+    await query(`
+      CREATE TABLE IF NOT EXISTS product_categories (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        category_name VARCHAR(100) NOT NULL UNIQUE,
+        category_slug VARCHAR(100) UNIQUE NOT NULL,
+        category_description TEXT,
+        parent_category_id UUID REFERENCES product_categories(id) ON DELETE SET NULL,
+        is_active BOOLEAN DEFAULT true,
+        category_img TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 11. Product Details Table
+    await query(`
+      CREATE TABLE IF NOT EXISTS product_details (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        product_name VARCHAR(255) NOT NULL,
+        product_slug VARCHAR(255) UNIQUE NOT NULL,
+        category_id UUID REFERENCES product_categories(id) ON DELETE SET NULL,
+        vendor_id UUID,
+        description TEXT,
+        price DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+        discounted_price DECIMAL(12, 2),
+        quantity_in_stock INTEGER DEFAULT 10,
+        sku VARCHAR(100) UNIQUE,
+        is_active BOOLEAN DEFAULT true,
+        is_featured BOOLEAN DEFAULT false,
+        featured_type VARCHAR(100) DEFAULT 'TOP_PICKS',
+        landing_section VARCHAR(100),
+        occasion VARCHAR(100),
+        images JSONB DEFAULT '[]'::jsonb,
+        variants JSONB DEFAULT '[]'::jsonb,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Check if categories are empty
+    const catCheck = await query(`SELECT COUNT(*) FROM product_categories`);
+    if (parseInt(catCheck.rows[0].count, 10) === 0) {
+      console.log('Database categories table is currently empty.');
+    }
+
+    // Check if products are empty
+    const prodCheck = await query(`SELECT COUNT(*) FROM product_details`);
+    if (parseInt(prodCheck.rows[0].count, 10) === 0) {
+      console.log('Database products table is currently empty.');
+    }
+
     console.log('Database Schema Initialized Successfully!');
   } catch (error) {
     console.error('Error initializing database schema:', error);

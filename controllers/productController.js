@@ -273,3 +273,338 @@ export const placeOrder = async (req, res, next) => {
   }
 };
 
+// --- Product Admin CRUD Controllers ---
+
+export const getAdminProducts = async (req, res, next) => {
+  try {
+    const { search, categoryId, vendorId, active } = req.query;
+    let sql = `
+      SELECT 
+        p.id, p.product_name, p.product_slug, p.description, 
+        p.price, p.discounted_price, p.quantity_in_stock,
+        p.sku, p.is_active, p.is_featured, p.created_at,
+        p.images, p.variants, p.category_id, p.vendor_id,
+        c.category_name, v.name as vendor_name, p.landing_section, p.featured_type, p.occasion
+      FROM product_details p
+      LEFT JOIN product_categories c ON p.category_id = c.id
+      LEFT JOIN vendors v ON p.vendor_id = v.id
+    `;
+    const conditions = [];
+    const params = [];
+
+    if (categoryId) {
+      params.push(categoryId);
+      conditions.push(`p.category_id = $${params.length}`);
+    }
+
+    if (vendorId) {
+      params.push(vendorId);
+      conditions.push(`p.vendor_id = $${params.length}`);
+    }
+
+    if (active !== undefined && active !== '' && active !== 'all') {
+      params.push(active === 'true' || active === 'active');
+      conditions.push(`p.is_active = $${params.length}`);
+    }
+
+    if (search) {
+      params.push(`%${search}%`);
+      conditions.push(`(p.product_name ILIKE $${params.length} OR p.description ILIKE $${params.length})`);
+    }
+
+    if (conditions.length > 0) {
+      sql += ` WHERE ` + conditions.join(' AND ');
+    }
+
+    sql += ` ORDER BY p.created_at DESC;`;
+
+    const result = await query(sql, params);
+    return res.status(200).json({
+      status: 'success',
+      data: result.rows
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getProductById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      return next(); // Fall through
+    }
+
+    const sql = `
+      SELECT p.*, c.category_name, v.name as vendor_name
+      FROM product_details p
+      LEFT JOIN product_categories c ON p.category_id = c.id
+      LEFT JOIN vendors v ON p.vendor_id = v.id
+      WHERE p.id = $1;
+    `;
+    const result = await query(sql, [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Product not found' });
+    }
+    return res.status(200).json({ status: 'success', data: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createProduct = async (req, res, next) => {
+  try {
+    const {
+      product_name, product_slug, category_id, vendor_id,
+      description, price, discounted_price, quantity_in_stock,
+      sku, is_active, is_featured, images, variants,
+      featured_type, landing_section, occasion
+    } = req.body;
+
+    if (!product_name || !product_slug || !category_id || !vendor_id || price === undefined) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Required fields: product_name, product_slug, category_id, vendor_id, price'
+      });
+    }
+
+    const sql = `
+      INSERT INTO product_details (
+        product_name, product_slug, category_id, vendor_id,
+        description, price, discounted_price, quantity_in_stock,
+        sku, is_active, is_featured, images, variants,
+        featured_type, landing_section, occasion
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      RETURNING *;
+    `;
+
+    const result = await query(sql, [
+      product_name,
+      product_slug,
+      category_id,
+      vendor_id,
+      description || '',
+      price,
+      discounted_price || null,
+      quantity_in_stock !== undefined ? quantity_in_stock : 10,
+      sku || '',
+      is_active !== undefined ? is_active : true,
+      is_featured !== undefined ? is_featured : false,
+      images || [],
+      variants || [],
+      featured_type || null,
+      landing_section || null,
+      occasion || null
+    ]);
+
+    return res.status(201).json({
+      status: 'success',
+      data: result.rows[0]
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateProduct = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      return next(); // Fall through
+    }
+
+    const {
+      product_name, product_slug, category_id, vendor_id,
+      description, price, discounted_price, quantity_in_stock,
+      sku, is_active, is_featured, images, variants,
+      featured_type, landing_section, occasion
+    } = req.body;
+
+    const selectSql = `SELECT * FROM product_details WHERE id = $1;`;
+    const selectRes = await query(selectSql, [id]);
+    if (selectRes.rows.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Product not found' });
+    }
+    const existing = selectRes.rows[0];
+
+    const sql = `
+      UPDATE product_details
+      SET
+        product_name = $1,
+        product_slug = $2,
+        category_id = $3,
+        vendor_id = $4,
+        description = $5,
+        price = $6,
+        discounted_price = $7,
+        quantity_in_stock = $8,
+        sku = $9,
+        is_active = $10,
+        is_featured = $11,
+        images = $12,
+        variants = $13,
+        featured_type = $14,
+        landing_section = $15,
+        occasion = $16,
+        updated_at = NOW()
+      WHERE id = $17
+      RETURNING *;
+    `;
+
+    const result = await query(sql, [
+      product_name !== undefined ? product_name : existing.product_name,
+      product_slug !== undefined ? product_slug : existing.product_slug,
+      category_id !== undefined ? category_id : existing.category_id,
+      vendor_id !== undefined ? vendor_id : existing.vendor_id,
+      description !== undefined ? description : existing.description,
+      price !== undefined ? price : existing.price,
+      discounted_price !== undefined ? discounted_price : existing.discounted_price,
+      quantity_in_stock !== undefined ? quantity_in_stock : existing.quantity_in_stock,
+      sku !== undefined ? sku : existing.sku,
+      is_active !== undefined ? is_active : existing.is_active,
+      is_featured !== undefined ? is_featured : existing.is_featured,
+      images !== undefined ? images : existing.images,
+      variants !== undefined ? variants : existing.variants,
+      featured_type !== undefined ? featured_type : existing.featured_type,
+      landing_section !== undefined ? landing_section : existing.landing_section,
+      occasion !== undefined ? occasion : existing.occasion,
+      id
+    ]);
+
+    return res.status(200).json({
+      status: 'success',
+      data: result.rows[0]
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteProduct = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      return next(); // Fall through
+    }
+
+    const sql = `DELETE FROM product_details WHERE id = $1 RETURNING *;`;
+    const result = await query(sql, [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Product not found' });
+    }
+
+    return res.status(200).json({
+      status: 'success',
+      data: result.rows[0]
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── Admin Campaign Controllers ────────────────────────────────────────────────
+
+export const getUniqueOccasions = async (req, res, next) => {
+  try {
+    const result = await query(`
+      SELECT DISTINCT occasion FROM product_details
+      WHERE occasion IS NOT NULL AND occasion <> ''
+      ORDER BY occasion ASC;
+    `);
+    const occasions = result.rows.map(r => r.occasion);
+    return res.status(200).json({ status: 'success', data: occasions });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getProductsBySection = async (req, res, next) => {
+  try {
+    const { section } = req.params;
+
+    const SECTION_MAP = {
+      'top-picks':       { col: 'featured_type', val: 'TOP_PICKS' },
+      'today-deals':     { col: 'featured_type', val: 'TODAY_DEALS' },
+      'deals-on-sarees': { col: 'featured_type', val: 'DEALS_ON_SAREES' },
+      'best-value':      { col: 'featured_type', val: 'BEST_VALUES' },
+      'new-arrivals':    { col: 'featured_type', val: 'NEW_ARRIVALS' },
+      'trending-now':    { col: 'featured_type', val: 'TRENDING_NOW' },
+    };
+
+    const mapping = SECTION_MAP[section];
+    if (!mapping) {
+      return res.status(400).json({ status: 'error', message: `Unknown section: ${section}` });
+    }
+
+    const colName = mapping.col;
+    const result = await query(`
+      SELECT p.id, p.product_name, p.product_slug, p.price, p.discounted_price,
+             p.images, p.is_active, p.featured_type, p.landing_section, p.occasion,
+             c.category_name
+      FROM product_details p
+      LEFT JOIN product_categories c ON p.category_id = c.id
+      WHERE p.${colName} = $1
+      ORDER BY p.created_at DESC;
+    `, [mapping.val]);
+
+    return res.status(200).json({ status: 'success', count: result.rows.length, data: result.rows });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getProductsByOccasionName = async (req, res, next) => {
+  try {
+    const { name } = req.params;
+    const result = await query(`
+      SELECT p.id, p.product_name, p.product_slug, p.price, p.discounted_price,
+             p.images, p.is_active, p.featured_type, p.landing_section, p.occasion,
+             c.category_name
+      FROM product_details p
+      LEFT JOIN product_categories c ON p.category_id = c.id
+      WHERE p.occasion ILIKE $1
+      ORDER BY p.created_at DESC;
+    `, [name]);
+    return res.status(200).json({ status: 'success', count: result.rows.length, data: result.rows });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getProductsOnSale = async (req, res, next) => {
+  try {
+    const result = await query(`
+      SELECT p.id, p.product_name, p.product_slug, p.price, p.discounted_price,
+             p.images, p.is_active, p.featured_type, p.landing_section, p.occasion,
+             c.category_name
+      FROM product_details p
+      LEFT JOIN product_categories c ON p.category_id = c.id
+      WHERE p.discounted_price IS NOT NULL
+      ORDER BY p.created_at DESC;
+    `);
+    return res.status(200).json({ status: 'success', count: result.rows.length, data: result.rows });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAllProductsForAdmin = async (req, res, next) => {
+  try {
+    const result = await query(`
+      SELECT p.id, p.product_name, p.product_slug, p.price, p.discounted_price,
+             p.images, p.is_active, p.featured_type, p.landing_section, p.occasion,
+             c.category_name
+      FROM product_details p
+      LEFT JOIN product_categories c ON p.category_id = c.id
+      ORDER BY p.product_name ASC;
+    `);
+    return res.status(200).json({ status: 'success', count: result.rows.length, data: result.rows });
+  } catch (error) {
+    next(error);
+  }
+};
