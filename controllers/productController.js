@@ -12,7 +12,10 @@ const fetchProducts = async (whereClause, params = [], reqLimit) => {
       p.price, p.discounted_price, p.quantity_in_stock,
       p.sku, p.is_active, p.is_featured, p.created_at,
       p.images, p.variants,
-      c.category_name, p.landing_section, p.featured_type, p.occasion
+      c.category_name,
+      (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as landing_section,
+      (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as featured_type,
+      (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'OCCASION') as occasion
     FROM product_details p
     LEFT JOIN product_categories c ON p.category_id = c.id
     WHERE p.is_active = true ${whereClause ? `AND ${whereClause}` : ''}
@@ -33,7 +36,7 @@ const fetchProducts = async (whereClause, params = [], reqLimit) => {
 
 export const getTopPicks = async (req, res, next) => {
   try {
-    const result = await fetchProducts(`p.featured_type::text ILIKE '%top%pick%'`, [], req.query.limit);
+    const result = await fetchProducts(`EXISTS (SELECT 1 FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name = 'TOP_PICKS')`, [], req.query.limit);
     res.status(200).json({ status: 'success', count: result.rows.length, data: result.rows });
   } catch (error) {
     next(error);
@@ -42,7 +45,7 @@ export const getTopPicks = async (req, res, next) => {
 
 export const getTodayDeals = async (req, res, next) => {
   try {
-    const result = await fetchProducts(`p.featured_type::text ILIKE '%today%deal%'`, [], req.query.limit);
+    const result = await fetchProducts(`EXISTS (SELECT 1 FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name = 'TODAY_DEALS')`, [], req.query.limit);
     res.status(200).json({ status: 'success', count: result.rows.length, data: result.rows });
   } catch (error) {
     next(error);
@@ -51,7 +54,7 @@ export const getTodayDeals = async (req, res, next) => {
 
 export const getDealsOnSarees = async (req, res, next) => {
   try {
-    const result = await fetchProducts(`p.landing_section::text ILIKE '%deals%on%saree%'`, [], req.query.limit);
+    const result = await fetchProducts(`EXISTS (SELECT 1 FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name = 'DEALS_ON_SAREES')`, [], req.query.limit);
     res.status(200).json({ status: 'success', count: result.rows.length, data: result.rows });
   } catch (error) {
     next(error);
@@ -60,7 +63,7 @@ export const getDealsOnSarees = async (req, res, next) => {
 
 export const getBestValue = async (req, res, next) => {
   try {
-    const result = await fetchProducts(`p.featured_type::text ILIKE '%best%value%'`, [], req.query.limit);
+    const result = await fetchProducts(`EXISTS (SELECT 1 FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name = 'BEST_VALUES')`, [], req.query.limit);
     res.status(200).json({ status: 'success', count: result.rows.length, data: result.rows });
   } catch (error) {
     next(error);
@@ -69,7 +72,7 @@ export const getBestValue = async (req, res, next) => {
 
 export const getNewArrivals = async (req, res, next) => {
   try {
-    const result = await fetchProducts(`p.featured_type::text ILIKE '%new%arrival%'`, [], req.query.limit);
+    const result = await fetchProducts(`EXISTS (SELECT 1 FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name = 'NEW_ARRIVALS')`, [], req.query.limit);
     res.status(200).json({ status: 'success', count: result.rows.length, data: result.rows });
   } catch (error) {
     next(error);
@@ -78,7 +81,7 @@ export const getNewArrivals = async (req, res, next) => {
 
 export const getTrendingNow = async (req, res, next) => {
   try {
-    const result = await fetchProducts(`p.featured_type::text ILIKE '%trending%now%'`, [], req.query.limit);
+    const result = await fetchProducts(`EXISTS (SELECT 1 FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name = 'TRENDING_NOW')`, [], req.query.limit);
     res.status(200).json({ status: 'success', count: result.rows.length, data: result.rows });
   } catch (error) {
     next(error);
@@ -88,10 +91,10 @@ export const getTrendingNow = async (req, res, next) => {
 export const getShopByOccasion = async (req, res, next) => {
   try {
     const occasion = req.query.occasion; // e.g. ?occasion=eid or diwali
-    let whereClause = 'p.occasion IS NOT NULL';
+    let whereClause = `EXISTS (SELECT 1 FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'OCCASION')`;
     let params = [];
     if (occasion) {
-      whereClause = `p.occasion::text ILIKE $1`;
+      whereClause = `EXISTS (SELECT 1 FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'OCCASION' AND campaign_name ILIKE $1)`;
       params = [`%${occasion}%`];
     }
     const result = await fetchProducts(whereClause, params, req.query.limit);
@@ -284,7 +287,10 @@ export const getAdminProducts = async (req, res, next) => {
         p.price, p.discounted_price, p.quantity_in_stock,
         p.sku, p.is_active, p.is_featured, p.created_at,
         p.images, p.variants, p.category_id, p.vendor_id,
-        c.category_name, v.name as vendor_name, p.landing_section, p.featured_type, p.occasion
+        c.category_name, v.name as vendor_name,
+        (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as landing_section,
+        (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as featured_type,
+        (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'OCCASION') as occasion
       FROM product_details p
       LEFT JOIN product_categories c ON p.category_id = c.id
       LEFT JOIN vendors v ON p.vendor_id = v.id
@@ -337,7 +343,15 @@ export const getProductById = async (req, res, next) => {
     }
 
     const sql = `
-      SELECT p.*, c.category_name, v.name as vendor_name
+      SELECT 
+        p.id, p.product_name, p.product_slug, p.description, 
+        p.price, p.discounted_price, p.quantity_in_stock,
+        p.sku, p.is_active, p.is_featured, p.created_at,
+        p.images, p.variants, p.category_id, p.vendor_id,
+        c.category_name, v.name as vendor_name,
+        (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as landing_section,
+        (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as featured_type,
+        (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'OCCASION') as occasion
       FROM product_details p
       LEFT JOIN product_categories c ON p.category_id = c.id
       LEFT JOIN vendors v ON p.vendor_id = v.id
@@ -399,9 +413,29 @@ export const createProduct = async (req, res, next) => {
       occasion || null
     ]);
 
+    const createdProd = result.rows[0];
+    if (featured_type) {
+      const parts = featured_type.split(',').map(s => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        await query(`INSERT INTO product_campaigns (product_id, campaign_type, campaign_name) VALUES ($1, 'SECTION', $2) ON CONFLICT DO NOTHING;`, [createdProd.id, part]);
+      }
+    }
+    if (landing_section) {
+      const parts = landing_section.split(',').map(s => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        await query(`INSERT INTO product_campaigns (product_id, campaign_type, campaign_name) VALUES ($1, 'SECTION', $2) ON CONFLICT DO NOTHING;`, [createdProd.id, part]);
+      }
+    }
+    if (occasion) {
+      const parts = occasion.split(',').map(s => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        await query(`INSERT INTO product_campaigns (product_id, campaign_type, campaign_name) VALUES ($1, 'OCCASION', $2) ON CONFLICT DO NOTHING;`, [createdProd.id, part]);
+      }
+    }
+
     return res.status(201).json({
       status: 'success',
-      data: result.rows[0]
+      data: createdProd
     });
   } catch (error) {
     next(error);
@@ -474,6 +508,34 @@ export const updateProduct = async (req, res, next) => {
       id
     ]);
 
+    if (featured_type !== undefined) {
+      await query(`DELETE FROM product_campaigns WHERE product_id = $1 AND campaign_type = 'SECTION' AND campaign_name NOT LIKE 'DEALS_ON_%';`, [id]);
+      if (featured_type) {
+        const parts = featured_type.split(',').map(s => s.trim()).filter(Boolean);
+        for (const part of parts) {
+          await query(`INSERT INTO product_campaigns (product_id, campaign_type, campaign_name) VALUES ($1, 'SECTION', $2) ON CONFLICT (product_id, campaign_type, campaign_name) DO NOTHING;`, [id, part]);
+        }
+      }
+    }
+    if (landing_section !== undefined) {
+      await query(`DELETE FROM product_campaigns WHERE product_id = $1 AND campaign_type = 'SECTION' AND campaign_name LIKE 'DEALS_ON_%';`, [id]);
+      if (landing_section) {
+        const parts = landing_section.split(',').map(s => s.trim()).filter(Boolean);
+        for (const part of parts) {
+          await query(`INSERT INTO product_campaigns (product_id, campaign_type, campaign_name) VALUES ($1, 'SECTION', $2) ON CONFLICT (product_id, campaign_type, campaign_name) DO NOTHING;`, [id, part]);
+        }
+      }
+    }
+    if (occasion !== undefined) {
+      await query(`DELETE FROM product_campaigns WHERE product_id = $1 AND campaign_type = 'OCCASION';`, [id]);
+      if (occasion) {
+        const parts = occasion.split(',').map(s => s.trim()).filter(Boolean);
+        for (const part of parts) {
+          await query(`INSERT INTO product_campaigns (product_id, campaign_type, campaign_name) VALUES ($1, 'OCCASION', $2) ON CONFLICT (product_id, campaign_type, campaign_name) DO NOTHING;`, [id, part]);
+        }
+      }
+    }
+
     return res.status(200).json({
       status: 'success',
       data: result.rows[0]
@@ -512,12 +574,10 @@ export const deleteProduct = async (req, res, next) => {
 export const getUniqueOccasions = async (req, res, next) => {
   try {
     const result = await query(`
-      SELECT DISTINCT occasion FROM product_details
-      WHERE occasion IS NOT NULL AND occasion <> ''
-      ORDER BY occasion ASC;
+      SELECT name, image FROM occasions
+      ORDER BY name ASC;
     `);
-    const occasions = result.rows.map(r => r.occasion);
-    return res.status(200).json({ status: 'success', data: occasions });
+    return res.status(200).json({ status: 'success', data: result.rows });
   } catch (error) {
     next(error);
   }
@@ -541,14 +601,18 @@ export const getProductsBySection = async (req, res, next) => {
       return res.status(400).json({ status: 'error', message: `Unknown section: ${section}` });
     }
 
-    const colName = mapping.col;
     const result = await query(`
       SELECT p.id, p.product_name, p.product_slug, p.price, p.discounted_price,
-             p.images, p.is_active, p.featured_type, p.landing_section, p.occasion,
-             c.category_name
+             p.images, p.is_active, c.category_name,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as landing_section,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as featured_type,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'OCCASION') as occasion
       FROM product_details p
       LEFT JOIN product_categories c ON p.category_id = c.id
-      WHERE p.${colName} = $1
+      WHERE EXISTS (
+        SELECT 1 FROM product_campaigns 
+        WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name = $1
+      )
       ORDER BY p.created_at DESC;
     `, [mapping.val]);
 
@@ -563,13 +627,18 @@ export const getProductsByOccasionName = async (req, res, next) => {
     const { name } = req.params;
     const result = await query(`
       SELECT p.id, p.product_name, p.product_slug, p.price, p.discounted_price,
-             p.images, p.is_active, p.featured_type, p.landing_section, p.occasion,
-             c.category_name
+             p.images, p.is_active, c.category_name,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as landing_section,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as featured_type,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'OCCASION') as occasion
       FROM product_details p
       LEFT JOIN product_categories c ON p.category_id = c.id
-      WHERE p.occasion ILIKE $1
+      WHERE EXISTS (
+        SELECT 1 FROM product_campaigns 
+        WHERE product_id = p.id AND campaign_type = 'OCCASION' AND campaign_name ILIKE $1
+      )
       ORDER BY p.created_at DESC;
-    `, [name]);
+    `, [`%${name}%`]);
     return res.status(200).json({ status: 'success', count: result.rows.length, data: result.rows });
   } catch (error) {
     next(error);
@@ -580,8 +649,10 @@ export const getProductsOnSale = async (req, res, next) => {
   try {
     const result = await query(`
       SELECT p.id, p.product_name, p.product_slug, p.price, p.discounted_price,
-             p.images, p.is_active, p.featured_type, p.landing_section, p.occasion,
-             c.category_name
+             p.images, p.is_active, c.category_name,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as landing_section,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as featured_type,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'OCCASION') as occasion
       FROM product_details p
       LEFT JOIN product_categories c ON p.category_id = c.id
       WHERE p.discounted_price IS NOT NULL
@@ -597,13 +668,74 @@ export const getAllProductsForAdmin = async (req, res, next) => {
   try {
     const result = await query(`
       SELECT p.id, p.product_name, p.product_slug, p.price, p.discounted_price,
-             p.images, p.is_active, p.featured_type, p.landing_section, p.occasion,
-             c.category_name
+             p.images, p.is_active, c.category_name,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as landing_section,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as featured_type,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'OCCASION') as occasion
       FROM product_details p
       LEFT JOIN product_categories c ON p.category_id = c.id
       ORDER BY p.product_name ASC;
     `);
     return res.status(200).json({ status: 'success', count: result.rows.length, data: result.rows });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createOrUpdateOccasion = async (req, res, next) => {
+  try {
+    const { name, image } = req.body;
+    if (!name) return res.status(400).json({ status: 'error', message: 'Name is required' });
+    const result = await query(`
+      INSERT INTO occasions (name, image)
+      VALUES ($1, $2)
+      ON CONFLICT (name) DO UPDATE SET image = EXCLUDED.image
+      RETURNING *;
+    `, [name, image]);
+    return res.status(200).json({ status: 'success', data: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateOccasion = async (req, res, next) => {
+  try {
+    const { oldName } = req.params;
+    const { name, image } = req.body;
+    if (!name) return res.status(400).json({ status: 'error', message: 'New name is required' });
+    
+    const result = await query(`
+      UPDATE occasions
+      SET name = $1, image = $2
+      WHERE name = $3
+      RETURNING *;
+    `, [name, image, oldName]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Occasion not found' });
+    }
+
+    await query(`
+      UPDATE product_campaigns
+      SET campaign_name = $1
+      WHERE campaign_type = 'OCCASION' AND campaign_name = $2;
+    `, [name, oldName]);
+
+    return res.status(200).json({ status: 'success', data: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteOccasion = async (req, res, next) => {
+  try {
+    const { name } = req.params;
+    if (!name) return res.status(400).json({ status: 'error', message: 'Name is required' });
+
+    await query(`DELETE FROM product_campaigns WHERE campaign_type = 'OCCASION' AND campaign_name = $1;`, [name]);
+    await query(`DELETE FROM occasions WHERE name = $1;`, [name]);
+
+    return res.status(200).json({ status: 'success', message: 'Occasion deleted successfully' });
   } catch (error) {
     next(error);
   }

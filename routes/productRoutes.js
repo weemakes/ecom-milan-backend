@@ -22,7 +22,10 @@ import {
   getProductsBySection,
   getProductsByOccasionName,
   getProductsOnSale,
-  getAllProductsForAdmin
+  getAllProductsForAdmin,
+  createOrUpdateOccasion,
+  updateOccasion,
+  deleteOccasion
 } from '../controllers/productController.js';
 
 const router = express.Router();
@@ -32,6 +35,9 @@ const router = express.Router();
 // Admin campaign endpoints
 router.get('/admin/all', getAllProductsForAdmin);
 router.get('/admin/occasions', getUniqueOccasions);
+router.post('/admin/occasions', createOrUpdateOccasion);
+router.put('/admin/occasions/:oldName', updateOccasion);
+router.delete('/admin/occasions/:name', deleteOccasion);
 router.get('/admin/section/:section', getProductsBySection);
 router.get('/admin/occasion/:name', getProductsByOccasionName);
 router.get('/admin/on-sale', getProductsOnSale);

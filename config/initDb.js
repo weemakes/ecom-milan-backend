@@ -180,6 +180,97 @@ export const initDb = async () => {
       );
     `);
 
+    // Migrate existing Enum columns to VARCHAR to support comma-separated multiple categories/campaigns
+    try {
+      await query(`ALTER TABLE product_details ALTER COLUMN featured_type DROP DEFAULT;`);
+      await query(`ALTER TABLE product_details ALTER COLUMN featured_type TYPE VARCHAR(100) USING featured_type::text;`);
+      await query(`ALTER TABLE product_details ALTER COLUMN featured_type SET DEFAULT 'TOP_PICKS';`);
+    } catch (e) {
+      // Column might already be altered or have custom structures
+    }
+
+    try {
+      await query(`ALTER TABLE product_details ALTER COLUMN landing_section TYPE VARCHAR(100) USING landing_section::text;`);
+    } catch (e) {
+      // Column might already be altered
+    }
+
+    // 12. Product Campaigns Table (Normalized Campaigns Mapping)
+    await query(`
+      CREATE TABLE IF NOT EXISTS product_campaigns (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        product_id UUID REFERENCES product_details(id) ON DELETE CASCADE,
+        campaign_type VARCHAR(50) NOT NULL, -- 'SECTION' or 'OCCASION'
+        campaign_name VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (product_id, campaign_type, campaign_name)
+      );
+    `);
+
+    // Sync existing data from columns to the campaigns table
+    try {
+      const existingProds = await query(`SELECT id, featured_type, landing_section, occasion FROM product_details`);
+      for (const prod of existingProds.rows) {
+        if (prod.featured_type) {
+          const parts = prod.featured_type.split(',').map(s => s.trim()).filter(Boolean);
+          for (const part of parts) {
+            await query(`
+              INSERT INTO product_campaigns (product_id, campaign_type, campaign_name)
+              VALUES ($1, 'SECTION', $2)
+              ON CONFLICT (product_id, campaign_type, campaign_name) DO NOTHING;
+            `, [prod.id, part]);
+          }
+        }
+        if (prod.landing_section) {
+          const parts = prod.landing_section.split(',').map(s => s.trim()).filter(Boolean);
+          for (const part of parts) {
+            await query(`
+              INSERT INTO product_campaigns (product_id, campaign_type, campaign_name)
+              VALUES ($1, 'SECTION', $2)
+              ON CONFLICT (product_id, campaign_type, campaign_name) DO NOTHING;
+            `, [prod.id, part]);
+          }
+        }
+        if (prod.occasion) {
+          const parts = prod.occasion.split(',').map(s => s.trim()).filter(Boolean);
+          for (const part of parts) {
+            await query(`
+              INSERT INTO product_campaigns (product_id, campaign_type, campaign_name)
+              VALUES ($1, 'OCCASION', $2)
+              ON CONFLICT (product_id, campaign_type, campaign_name) DO NOTHING;
+            `, [prod.id, part]);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error syncing campaign data:', e);
+    }
+
+    // 13. Occasions Master Table
+    await query(`
+      CREATE TABLE IF NOT EXISTS occasions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(100) UNIQUE NOT NULL,
+        image TEXT,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Seed master occasions from product_campaigns
+    try {
+      const existingOccs = await query(`SELECT DISTINCT campaign_name FROM product_campaigns WHERE campaign_type = 'OCCASION'`);
+      for (const occ of existingOccs.rows) {
+        await query(`
+          INSERT INTO occasions (name, image)
+          VALUES ($1, $2)
+          ON CONFLICT (name) DO NOTHING;
+        `, [occ.campaign_name, 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?q=80&w=600&auto=format&fit=crop']);
+      }
+    } catch (e) {
+      console.error('Error seeding occasions:', e);
+    }
+
     // Check if categories are empty
     const catCheck = await query(`SELECT COUNT(*) FROM product_categories`);
     if (parseInt(catCheck.rows[0].count, 10) === 0) {
