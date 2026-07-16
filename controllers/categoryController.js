@@ -1,4 +1,5 @@
 import { query } from '../config/db.js';
+import { uploadToCloudinary } from '../config/cloudinary.js';
 
 // GET all categories
 export const getAllCategories = async (req, res, next) => {
@@ -77,13 +78,18 @@ export const createCategory = async (req, res, next) => {
       RETURNING *;
     `;
     
+    let finalImg = category_img;
+    if (category_img) {
+      finalImg = await uploadToCloudinary(category_img, 'categories');
+    }
+
     const result = await query(sql, [
       category_name,
       category_slug,
       category_description || null,
       parent_category_id || null,
       is_active !== undefined ? is_active : true,
-      category_img || null
+      finalImg
     ]);
 
     return res.status(201).json({
@@ -129,13 +135,18 @@ export const updateCategory = async (req, res, next) => {
       RETURNING *;
     `;
 
+    let finalImg = existing.category_img;
+    if (category_img !== undefined) {
+      finalImg = category_img ? await uploadToCloudinary(category_img, 'categories') : null;
+    }
+
     const result = await query(sql, [
       finalName,
       category_slug,
       category_description !== undefined ? category_description : existing.category_description,
       parent_category_id !== undefined ? parent_category_id : existing.parent_category_id,
       is_active !== undefined ? is_active : existing.is_active,
-      category_img !== undefined ? category_img : existing.category_img,
+      finalImg,
       id
     ]);
 

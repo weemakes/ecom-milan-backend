@@ -1,4 +1,5 @@
 import { query } from '../config/db.js';
+import { uploadToCloudinary } from '../config/cloudinary.js';
 
 // Helper function to handle common product queries
 const fetchProducts = async (whereClause, params = [], reqLimit) => {
@@ -394,6 +395,16 @@ export const createProduct = async (req, res, next) => {
       RETURNING *;
     `;
 
+    const uploadedImages = [];
+    if (images && Array.isArray(images)) {
+      for (const img of images) {
+        if (img) {
+          const url = await uploadToCloudinary(img, 'products');
+          uploadedImages.push(url);
+        }
+      }
+    }
+
     const result = await query(sql, [
       product_name,
       product_slug,
@@ -406,7 +417,7 @@ export const createProduct = async (req, res, next) => {
       sku && sku.trim() ? sku.trim() : null,
       is_active !== undefined ? is_active : true,
       is_featured !== undefined ? is_featured : false,
-      images || [],
+      uploadedImages,
       JSON.stringify(variants || []),
       featured_type || null,
       landing_section || null,
@@ -488,6 +499,18 @@ export const updateProduct = async (req, res, next) => {
       RETURNING *;
     `;
 
+    let uploadedImages = existing.images || [];
+    if (images !== undefined && Array.isArray(images)) {
+      const temp = [];
+      for (const img of images) {
+        if (img) {
+          const url = await uploadToCloudinary(img, 'products');
+          temp.push(url);
+        }
+      }
+      uploadedImages = temp;
+    }
+
     const result = await query(sql, [
       product_name !== undefined ? product_name : existing.product_name,
       product_slug !== undefined ? product_slug : existing.product_slug,
@@ -500,7 +523,7 @@ export const updateProduct = async (req, res, next) => {
       sku !== undefined ? (sku && sku.trim() ? sku.trim() : null) : existing.sku,
       is_active !== undefined ? is_active : existing.is_active,
       is_featured !== undefined ? is_featured : existing.is_featured,
-      images !== undefined ? images : existing.images,
+      uploadedImages,
       variants !== undefined ? JSON.stringify(variants || []) : JSON.stringify(existing.variants || []),
       featured_type !== undefined ? featured_type : existing.featured_type,
       landing_section !== undefined ? landing_section : existing.landing_section,
@@ -686,12 +709,18 @@ export const createOrUpdateOccasion = async (req, res, next) => {
   try {
     const { name, image } = req.body;
     if (!name) return res.status(400).json({ status: 'error', message: 'Name is required' });
+    
+    let finalImage = image;
+    if (image) {
+      finalImage = await uploadToCloudinary(image, 'occasions');
+    }
+
     const result = await query(`
       INSERT INTO occasions (name, image)
       VALUES ($1, $2)
       ON CONFLICT (name) DO UPDATE SET image = EXCLUDED.image
       RETURNING *;
-    `, [name, image]);
+    `, [name, finalImage]);
     return res.status(200).json({ status: 'success', data: result.rows[0] });
   } catch (error) {
     next(error);
@@ -704,12 +733,17 @@ export const updateOccasion = async (req, res, next) => {
     const { name, image } = req.body;
     if (!name) return res.status(400).json({ status: 'error', message: 'New name is required' });
     
+    let finalImage = image;
+    if (image) {
+      finalImage = await uploadToCloudinary(image, 'occasions');
+    }
+
     const result = await query(`
       UPDATE occasions
       SET name = $1, image = $2
       WHERE name = $3
       RETURNING *;
-    `, [name, image, oldName]);
+    `, [name, finalImage, oldName]);
     
     if (result.rows.length === 0) {
       return res.status(404).json({ status: 'error', message: 'Occasion not found' });
