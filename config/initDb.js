@@ -321,6 +321,7 @@ export const initDb = async () => {
 
     console.log('Database Schema Initialized Successfully!');
   } catch (error) {
+    console.log(error)
     console.error('Error initializing database schema:', error);
   }
 };
