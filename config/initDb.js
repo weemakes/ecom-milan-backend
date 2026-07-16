@@ -207,6 +207,25 @@ export const initDb = async () => {
       );
     `);
 
+    // Ensure the unique constraint exists on product_campaigns
+    try {
+      // First clean up any duplicate rows if they exist, to prevent ALTER TABLE from failing
+      await query(`
+        DELETE FROM product_campaigns a USING product_campaigns b
+        WHERE a.id < b.id
+          AND a.product_id = b.product_id
+          AND a.campaign_type = b.campaign_type
+          AND a.campaign_name = b.campaign_name;
+      `);
+      // Then add the unique constraint if it doesn't already exist
+      await query(`
+        ALTER TABLE product_campaigns 
+        ADD CONSTRAINT uq_product_campaigns UNIQUE (product_id, campaign_type, campaign_name);
+      `);
+    } catch (e) {
+      // Constraint might already exist
+    }
+
     // Sync existing data from columns to the campaigns table
     try {
       const existingProds = await query(`SELECT id, featured_type, landing_section, occasion FROM product_details`);
@@ -256,6 +275,23 @@ export const initDb = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    // Ensure the unique constraint exists on occasions name
+    try {
+      // First clean up any duplicate rows in occasions if they exist
+      await query(`
+        DELETE FROM occasions a USING occasions b
+        WHERE a.id < b.id
+          AND a.name = b.name;
+      `);
+      // Then add the unique constraint if it doesn't already exist
+      await query(`
+        ALTER TABLE occasions 
+        ADD CONSTRAINT uq_occasions_name UNIQUE (name);
+      `);
+    } catch (e) {
+      // Constraint might already exist
+    }
 
     // Seed master occasions from product_campaigns
     try {
