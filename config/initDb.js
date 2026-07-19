@@ -176,7 +176,8 @@ export const initDb = async () => {
         occasion VARCHAR(100),
         images JSONB DEFAULT '[]'::jsonb,
         variants JSONB DEFAULT '[]'::jsonb,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
@@ -193,6 +194,13 @@ export const initDb = async () => {
       await query(`ALTER TABLE product_details ALTER COLUMN landing_section TYPE VARCHAR(100) USING landing_section::text;`);
     } catch (e) {
       // Column might already be altered
+    }
+
+    // Add updated_at column to product_details if it does not exist
+    try {
+      await query(`ALTER TABLE product_details ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`);
+    } catch (e) {
+      // Column might already exist
     }
 
     // 12. Product Campaigns Table (Normalized Campaigns Mapping)
