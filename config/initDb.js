@@ -315,6 +315,18 @@ export const initDb = async () => {
       console.error('Error seeding occasions:', e);
     }
 
+    // 14. Customer Leads Table (For Homepage Popup & Discount Registrations)
+    await query(`
+      CREATE TABLE IF NOT EXISTS customer_leads (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email_or_phone VARCHAR(255) NOT NULL,
+        source VARCHAR(100) DEFAULT 'POPUP_10OFF',
+        coupon_code VARCHAR(100) DEFAULT 'WELCOME10',
+        status VARCHAR(50) DEFAULT 'SUBSCRIBED',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     // Check if categories are empty
     const catCheck = await query(`SELECT COUNT(*) FROM product_categories`);
     if (parseInt(catCheck.rows[0].count, 10) === 0) {
