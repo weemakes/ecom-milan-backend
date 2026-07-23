@@ -25,7 +25,9 @@ import {
   getAllProductsForAdmin,
   createOrUpdateOccasion,
   updateOccasion,
-  deleteOccasion
+  deleteOccasion,
+  getOrdersForAdmin,
+  updateOrderStatus
 } from '../controllers/productController.js';
 
 const router = express.Router();
@@ -41,6 +43,8 @@ router.delete('/admin/occasions/:name', deleteOccasion);
 router.get('/admin/section/:section', getProductsBySection);
 router.get('/admin/occasion/:name', getProductsByOccasionName);
 router.get('/admin/on-sale', getProductsOnSale);
+router.get('/admin/orders', getOrdersForAdmin);
+router.put('/admin/orders/:id/status', updateOrderStatus);
 
 // Product listing & storefront endpoints
 router.get('/categories', getAllCategories);
