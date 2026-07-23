@@ -203,6 +203,20 @@ export const initDb = async () => {
       // Column might already exist
     }
 
+    // Migrate images column from text[] to JSONB if needed
+    try {
+      await query(`ALTER TABLE product_details ALTER COLUMN images DROP DEFAULT;`);
+      await query(`ALTER TABLE product_details ALTER COLUMN images TYPE JSONB USING to_jsonb(images);`);
+      await query(`ALTER TABLE product_details ALTER COLUMN images SET DEFAULT '[]'::jsonb;`);
+    } catch (e) {
+      try {
+        await query(`ALTER TABLE product_details ALTER COLUMN images TYPE JSONB USING images::jsonb;`);
+        await query(`ALTER TABLE product_details ALTER COLUMN images SET DEFAULT '[]'::jsonb;`);
+      } catch (err) {
+        // Column might already be jsonb or incompatible
+      }
+    }
+
     // 12. Product Campaigns Table (Normalized Campaigns Mapping)
     await query(`
       CREATE TABLE IF NOT EXISTS product_campaigns (

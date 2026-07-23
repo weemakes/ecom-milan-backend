@@ -1,4 +1,5 @@
 import { query } from '../config/db.js';
+import { sendCouponClaimedEmail } from '../services/brevoService.js';
 
 /**
  * Register / Subscribe a new customer lead (e.g. from 10% Off Popup)
@@ -35,6 +36,13 @@ export const subscribeCustomer = async (req, res) => {
       );
       customer = result.rows[0];
     }
+
+    // Trigger Brevo Email Notification in background (non-blocking)
+    sendCouponClaimedEmail({
+      customerContact: cleanedContact,
+      couponCode: coupon_code,
+      source: source,
+    }).catch((err) => console.error('Failed sending Brevo notification:', err));
 
     return res.status(201).json({
       status: 'success',

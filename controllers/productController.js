@@ -391,7 +391,7 @@ export const createProduct = async (req, res, next) => {
         sku, is_active, is_featured, images, variants,
         featured_type, landing_section, occasion
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14, $15, $16)
       RETURNING *;
     `;
 
@@ -489,8 +489,8 @@ export const updateProduct = async (req, res, next) => {
         sku = $9,
         is_active = $10,
         is_featured = $11,
-        images = $12,
-        variants = $13,
+        images = $12::jsonb,
+        variants = $13::jsonb,
         featured_type = $14,
         landing_section = $15,
         occasion = $16,
