@@ -11,8 +11,10 @@ const pool = new Pool({
   user: process.env.PG_USER || 'postgres',
   password: process.env.PG_PASSWORD || 'inframe123',
   database: process.env.PG_DATABASE || 'ecom_db',
-  ssl: process.env.PG_SSL === 'true' ? { rejectUnauthorized: false } : false,
-},
+    ssl: {
+    rejectUnauthorized: false,
+  },
+}
 );
 
 pool.on('connect', () => {
