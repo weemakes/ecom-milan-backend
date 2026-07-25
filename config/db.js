@@ -5,6 +5,11 @@ dotenv.config();
 
 const { Pool } = pkg;
 
+console.log("PG_HOST:", process.env.PG_HOST);
+console.log("PG_DATABASE:", process.env.PG_DATABASE);
+console.log("PG_USER:", process.env.PG_USER);
+console.log("PG_PASSWORD exists:", !!process.env.PG_PASSWORD);
+
 const pool = new Pool({
   host: process.env.PG_HOST || 'localhost',
   port: process.env.PG_PORT || 5432,
