@@ -870,10 +870,11 @@ export const deleteOccasion = async (req, res, next) => {
 export const getOrdersForAdmin = async (req, res, next) => {
   try {
     const ordersRes = await query(`
-      SELECT o.*, u.username as customer_username, u.email as customer_email, u.phone as customer_phone
+            SELECT o.*, u.name as customer_username, u.email as customer_email, u.phone as customer_phone
       FROM orders o
-      LEFT JOIN users u ON o.user_id = u.id
-      ORDER BY o.order_date DESC
+      LEFT JOIN users u ON o.customer_id = u.id
+      ORDER BY o.created_at DESC
+
     `);
     
     const orders = ordersRes.rows;
