@@ -10,6 +10,7 @@ import productRoutes from './routes/productRoutes.js';
 import categoryRoutes from './routes/categoryRoutes.js';
 import vendorCrudRoutes from './routes/vendorCrudRoutes.js';
 import customerRoutes from './routes/customerRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
 
 dotenv.config();
 
@@ -32,6 +33,8 @@ app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/vendors', vendorCrudRoutes);
 app.use('/api/customers', customerRoutes);
+app.use('/api', paymentRoutes);
+
 
 // Basic Routes
 app.get('/', (req, res) => {

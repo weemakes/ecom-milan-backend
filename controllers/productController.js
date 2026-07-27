@@ -341,15 +341,25 @@ export const placeOrder = async (req, res, next) => {
       );
     }
     
+    // Map payment_method to allowed PostgreSQL constraint values ('COD', 'CARD', 'UPI', 'NET_BANKING', 'WALLET')
+    let dbPaymentMethod = (payment_method || 'COD').toUpperCase();
+    if (dbPaymentMethod.includes('UPI')) {
+      dbPaymentMethod = 'UPI';
+    } else if (dbPaymentMethod.includes('CARD') || dbPaymentMethod.includes('RAZORPAY') || dbPaymentMethod.includes('STANDARD')) {
+      dbPaymentMethod = 'CARD';
+    } else if (!['COD', 'CARD', 'UPI', 'NET_BANKING', 'WALLET'].includes(dbPaymentMethod)) {
+      dbPaymentMethod = 'UPI';
+    }
+
     // Insert into payments table
     await query(
-      `INSERT INTO payments (order_id, payment_method, payment_status) VALUES ($1, $2, 'PENDING')`,
-      [order.id, payment_method || 'COD']
+      `INSERT INTO payments (order_id, payment_method, payment_status) VALUES ($1, $2, 'PAID')`,
+      [order.id, dbPaymentMethod]
     );
     
     // Send invoice receipt email with PDF attachment
     try {
-      await sendOrderReceiptEmail(order, itemDetails, shipping_address, payment_method || 'COD');
+      await sendOrderReceiptEmail(order, itemDetails, shipping_address, dbPaymentMethod);
     } catch (emailErr) {
       console.error('⚠️ [Order Receipt] Failed to send receipt email:', emailErr);
     }
@@ -357,11 +367,12 @@ export const placeOrder = async (req, res, next) => {
     // Generate PDF in base64 format for automatic frontend download
     let base64Pdf = '';
     try {
-      const pdfBuffer = await generateInvoicePDF(order, itemDetails, shipping_address, payment_method || 'COD');
+      const pdfBuffer = await generateInvoicePDF(order, itemDetails, shipping_address, dbPaymentMethod);
       base64Pdf = pdfBuffer.toString('base64');
     } catch (pdfErr) {
       console.error('⚠️ [PDF Generation] Failed to generate PDF buffer for response:', pdfErr);
     }
+
     
     res.status(201).json({ status: 'success', message: 'Order placed successfully', data: order, pdf: base64Pdf });
   } catch (error) {
