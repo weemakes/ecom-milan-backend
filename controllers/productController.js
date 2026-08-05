@@ -634,7 +634,7 @@ export const updateProduct = async (req, res, next) => {
       id
     ]);
 
-    if (featured_type !== undefined) {
+    if (featured_type !== undefined && featured_type !== null) {
       await query(`DELETE FROM product_campaigns WHERE product_id = $1 AND campaign_type = 'SECTION' AND campaign_name NOT LIKE 'DEALS_ON_%';`, [id]);
       if (featured_type) {
         const parts = featured_type.split(',').map(s => s.trim()).filter(Boolean);
@@ -643,7 +643,7 @@ export const updateProduct = async (req, res, next) => {
         }
       }
     }
-    if (landing_section !== undefined) {
+    if (landing_section !== undefined && landing_section !== null) {
       await query(`DELETE FROM product_campaigns WHERE product_id = $1 AND campaign_type = 'SECTION' AND campaign_name LIKE 'DEALS_ON_%';`, [id]);
       if (landing_section) {
         const parts = landing_section.split(',').map(s => s.trim()).filter(Boolean);
@@ -652,7 +652,7 @@ export const updateProduct = async (req, res, next) => {
         }
       }
     }
-    if (occasion !== undefined) {
+    if (occasion !== undefined && occasion !== null) {
       await query(`DELETE FROM product_campaigns WHERE product_id = $1 AND campaign_type = 'OCCASION';`, [id]);
       if (occasion) {
         const parts = occasion.split(',').map(s => s.trim()).filter(Boolean);
