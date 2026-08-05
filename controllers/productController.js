@@ -15,8 +15,8 @@ const fetchProducts = async (whereClause, params = [], reqLimit) => {
       p.sku, p.is_active, p.is_featured, p.created_at,
       p.images, p.variants,
       c.category_name,
-      (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as landing_section,
-      (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as featured_type,
+      (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name LIKE 'DEALS_ON_%') as landing_section,
+      (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name NOT LIKE 'DEALS_ON_%') as featured_type,
       (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'OCCASION') as occasion
     FROM product_details p
     LEFT JOIN product_categories c ON p.category_id = c.id
@@ -238,8 +238,8 @@ export const placeOrder = async (req, res, next) => {
         const passwordHash = '$2b$10$abcdefghijklmnopqrstuvwxyz123456';
         try {
           const newGuest = await query(
-            `INSERT INTO users (username, email, phone, password_hash, is_verified) 
-             VALUES ($1, $2, $3, $4, true) RETURNING id`,
+            `INSERT INTO users (name, email, phone, password_hash, role) 
+             VALUES ($1, $2, $3, $4, 'CUSTOMER') RETURNING id`,
             [defaultUsername, defaultEmail, defaultPhone, passwordHash]
           );
           finalUserId = newGuest.rows[0].id;
@@ -320,11 +320,21 @@ export const placeOrder = async (req, res, next) => {
     
     const order_vendor_id = itemDetails.length > 0 ? itemDetails[0].shop_id : null;
     
+    // Map payment_method to allowed PostgreSQL constraint values ('COD', 'CARD', 'UPI', 'NET_BANKING', 'WALLET')
+    let dbPaymentMethod = (payment_method || 'COD').toUpperCase();
+    if (dbPaymentMethod.includes('UPI')) {
+      dbPaymentMethod = 'UPI';
+    } else if (dbPaymentMethod.includes('CARD') || dbPaymentMethod.includes('RAZORPAY') || dbPaymentMethod.includes('STANDARD')) {
+      dbPaymentMethod = 'CARD';
+    } else if (!['COD', 'CARD', 'UPI', 'NET_BANKING', 'WALLET'].includes(dbPaymentMethod)) {
+      dbPaymentMethod = 'UPI';
+    }
+
     // Insert into orders table
     const orderRes = await query(
-      `INSERT INTO orders (order_number, user_id, vendor_id, subtotal, total_discount, shipping_charge, grand_total, shipping_address)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [order_number, finalUserId, order_vendor_id, subtotal, discount, shipping_charge, grand_total, JSON.stringify(shipping_address)]
+      `INSERT INTO orders (order_number, user_id, vendor_id, items, subtotal, total_discount, shipping_charge, grand_total, total_amount, shipping_address, payment_method)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+      [order_number, finalUserId, order_vendor_id, JSON.stringify(itemDetails), subtotal, discount, shipping_charge, grand_total, grand_total, JSON.stringify(shipping_address), dbPaymentMethod]
     );
     const order = orderRes.rows[0];
     
@@ -341,16 +351,6 @@ export const placeOrder = async (req, res, next) => {
       );
     }
     
-    // Map payment_method to allowed PostgreSQL constraint values ('COD', 'CARD', 'UPI', 'NET_BANKING', 'WALLET')
-    let dbPaymentMethod = (payment_method || 'COD').toUpperCase();
-    if (dbPaymentMethod.includes('UPI')) {
-      dbPaymentMethod = 'UPI';
-    } else if (dbPaymentMethod.includes('CARD') || dbPaymentMethod.includes('RAZORPAY') || dbPaymentMethod.includes('STANDARD')) {
-      dbPaymentMethod = 'CARD';
-    } else if (!['COD', 'CARD', 'UPI', 'NET_BANKING', 'WALLET'].includes(dbPaymentMethod)) {
-      dbPaymentMethod = 'UPI';
-    }
-
     // Insert into payments table
     await query(
       `INSERT INTO payments (order_id, payment_method, payment_status) VALUES ($1, $2, 'PAID')`,
@@ -392,8 +392,8 @@ export const getAdminProducts = async (req, res, next) => {
         p.sku, p.is_active, p.is_featured, p.created_at,
         p.images, p.variants, p.category_id, p.vendor_id,
         c.category_name, v.name as vendor_name,
-        (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as landing_section,
-        (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as featured_type,
+        (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name LIKE 'DEALS_ON_%') as landing_section,
+        (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name NOT LIKE 'DEALS_ON_%') as featured_type,
         (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'OCCASION') as occasion
       FROM product_details p
       LEFT JOIN product_categories c ON p.category_id = c.id
@@ -453,8 +453,8 @@ export const getProductById = async (req, res, next) => {
         p.sku, p.is_active, p.is_featured, p.created_at,
         p.images, p.variants, p.category_id, p.vendor_id,
         c.category_name, v.name as vendor_name,
-        (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as landing_section,
-        (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as featured_type,
+        (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name LIKE 'DEALS_ON_%') as landing_section,
+        (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name NOT LIKE 'DEALS_ON_%') as featured_type,
         (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'OCCASION') as occasion
       FROM product_details p
       LEFT JOIN product_categories c ON p.category_id = c.id
@@ -491,10 +491,9 @@ export const createProduct = async (req, res, next) => {
       INSERT INTO product_details (
         product_name, product_slug, category_id, vendor_id,
         description, price, discounted_price, quantity_in_stock,
-        sku, is_active, is_featured, images, variants,
-        featured_type, landing_section, occasion
+        sku, is_active, is_featured, images, variants
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14, $15, $16)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb)
       RETURNING *;
     `;
 
@@ -502,8 +501,12 @@ export const createProduct = async (req, res, next) => {
     if (images && Array.isArray(images)) {
       for (const img of images) {
         if (img) {
-          const url = await uploadToCloudinary(img, 'products');
-          uploadedImages.push(url);
+          try {
+            const url = await uploadToCloudinary(img, 'products');
+            if (url) uploadedImages.push(url);
+          } catch (uploadErr) {
+            console.error('Image upload failed, skipping:', uploadErr.message);
+          }
         }
       }
     }
@@ -521,29 +524,26 @@ export const createProduct = async (req, res, next) => {
       is_active !== undefined ? is_active : true,
       is_featured !== undefined ? is_featured : false,
       JSON.stringify(uploadedImages || []),
-      JSON.stringify(variants || []),
-      featured_type || null,
-      landing_section || null,
-      occasion || null
+      JSON.stringify(variants || [])
     ]);
 
     const createdProd = result.rows[0];
     if (featured_type) {
       const parts = featured_type.split(',').map(s => s.trim()).filter(Boolean);
       for (const part of parts) {
-        await query(`INSERT INTO product_campaigns (product_id, campaign_type, campaign_name) VALUES ($1, 'SECTION', $2) ON CONFLICT DO NOTHING;`, [createdProd.id, part]);
+        await query(`INSERT INTO product_campaigns (product_id, campaign_type, campaign_name) VALUES ($1, 'SECTION', $2) ON CONFLICT (product_id, campaign_type, campaign_name) DO NOTHING;`, [createdProd.id, part]);
       }
     }
     if (landing_section) {
       const parts = landing_section.split(',').map(s => s.trim()).filter(Boolean);
       for (const part of parts) {
-        await query(`INSERT INTO product_campaigns (product_id, campaign_type, campaign_name) VALUES ($1, 'SECTION', $2) ON CONFLICT DO NOTHING;`, [createdProd.id, part]);
+        await query(`INSERT INTO product_campaigns (product_id, campaign_type, campaign_name) VALUES ($1, 'SECTION', $2) ON CONFLICT (product_id, campaign_type, campaign_name) DO NOTHING;`, [createdProd.id, part]);
       }
     }
     if (occasion) {
       const parts = occasion.split(',').map(s => s.trim()).filter(Boolean);
       for (const part of parts) {
-        await query(`INSERT INTO product_campaigns (product_id, campaign_type, campaign_name) VALUES ($1, 'OCCASION', $2) ON CONFLICT DO NOTHING;`, [createdProd.id, part]);
+        await query(`INSERT INTO product_campaigns (product_id, campaign_type, campaign_name) VALUES ($1, 'OCCASION', $2) ON CONFLICT (product_id, campaign_type, campaign_name) DO NOTHING;`, [createdProd.id, part]);
       }
     }
 
@@ -594,11 +594,8 @@ export const updateProduct = async (req, res, next) => {
         is_featured = $11,
         images = $12::jsonb,
         variants = $13::jsonb,
-        featured_type = $14,
-        landing_section = $15,
-        occasion = $16,
         updated_at = NOW()
-      WHERE id = $17
+      WHERE id = $14
       RETURNING *;
     `;
 
@@ -607,8 +604,15 @@ export const updateProduct = async (req, res, next) => {
       const temp = [];
       for (const img of images) {
         if (img) {
-          const url = await uploadToCloudinary(img, 'products');
-          temp.push(url);
+          try {
+            const url = await uploadToCloudinary(img, 'products');
+            if (url) temp.push(url);
+          } catch (uploadErr) {
+            console.error('Image upload failed during update:', uploadErr.message);
+            if (typeof img === 'string' && (img.startsWith('http://') || img.startsWith('https://'))) {
+              temp.push(img);
+            }
+          }
         }
       }
       uploadedImages = temp;
@@ -628,9 +632,6 @@ export const updateProduct = async (req, res, next) => {
       is_featured !== undefined ? is_featured : existing.is_featured,
       JSON.stringify(uploadedImages || []),
       variants !== undefined ? JSON.stringify(variants || []) : JSON.stringify(existing.variants || []),
-      featured_type !== undefined ? featured_type : existing.featured_type,
-      landing_section !== undefined ? landing_section : existing.landing_section,
-      occasion !== undefined ? occasion : existing.occasion,
       id
     ]);
 
@@ -730,8 +731,8 @@ export const getProductsBySection = async (req, res, next) => {
     const result = await query(`
       SELECT p.id, p.product_name, p.product_slug, p.price, p.discounted_price,
              p.images, p.is_active, c.category_name,
-             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as landing_section,
-             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as featured_type,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name LIKE 'DEALS_ON_%') as landing_section,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name NOT LIKE 'DEALS_ON_%') as featured_type,
              (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'OCCASION') as occasion
       FROM product_details p
       LEFT JOIN product_categories c ON p.category_id = c.id
@@ -754,8 +755,8 @@ export const getProductsByOccasionName = async (req, res, next) => {
     const result = await query(`
       SELECT p.id, p.product_name, p.product_slug, p.price, p.discounted_price,
              p.images, p.is_active, c.category_name,
-             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as landing_section,
-             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as featured_type,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name LIKE 'DEALS_ON_%') as landing_section,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name NOT LIKE 'DEALS_ON_%') as featured_type,
              (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'OCCASION') as occasion
       FROM product_details p
       LEFT JOIN product_categories c ON p.category_id = c.id
@@ -776,8 +777,8 @@ export const getProductsOnSale = async (req, res, next) => {
     const result = await query(`
       SELECT p.id, p.product_name, p.product_slug, p.price, p.discounted_price,
              p.images, p.is_active, c.category_name,
-             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as landing_section,
-             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as featured_type,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name LIKE 'DEALS_ON_%') as landing_section,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name NOT LIKE 'DEALS_ON_%') as featured_type,
              (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'OCCASION') as occasion
       FROM product_details p
       LEFT JOIN product_categories c ON p.category_id = c.id
@@ -795,8 +796,8 @@ export const getAllProductsForAdmin = async (req, res, next) => {
     const result = await query(`
       SELECT p.id, p.product_name, p.product_slug, p.price, p.discounted_price,
              p.images, p.is_active, c.category_name,
-             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as landing_section,
-             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION') as featured_type,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name LIKE 'DEALS_ON_%') as landing_section,
+             (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'SECTION' AND campaign_name NOT LIKE 'DEALS_ON_%') as featured_type,
              (SELECT string_agg(campaign_name, ', ') FROM product_campaigns WHERE product_id = p.id AND campaign_type = 'OCCASION') as occasion
       FROM product_details p
       LEFT JOIN product_categories c ON p.category_id = c.id
