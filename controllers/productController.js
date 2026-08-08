@@ -618,24 +618,61 @@ export const updateProduct = async (req, res, next) => {
       uploadedImages = temp;
     }
 
+    const cleanUuid = (val, fallback) => {
+      if (val === undefined) return fallback;
+      if (!val || (typeof val === 'string' && !val.trim())) return null;
+      return val;
+    };
+
+    const cleanNumeric = (val, fallback) => {
+      if (val === undefined) return fallback;
+      if (val === null || val === '' || isNaN(val)) return null;
+      return parseFloat(val);
+    };
+
+    const cleanInt = (val, fallback) => {
+      if (val === undefined) return fallback;
+      if (val === null || val === '' || isNaN(val)) return fallback;
+      return parseInt(val, 10);
+    };
+
+    const cleanJson = (val, fallback) => {
+      if (val === undefined) return JSON.stringify(fallback || []);
+      if (typeof val === 'string') {
+        try {
+          JSON.parse(val);
+          return val;
+        } catch {
+          return JSON.stringify(val);
+        }
+      }
+      return JSON.stringify(val || []);
+    };
+
+    const finalPrice = cleanNumeric(price, existing.price);
+    const finalDiscountedPrice = cleanNumeric(discounted_price, existing.discounted_price);
+    const finalQty = cleanInt(quantity_in_stock, existing.quantity_in_stock);
+    const finalCategoryId = cleanUuid(category_id, existing.category_id);
+    const finalVendorId = cleanUuid(vendor_id, existing.vendor_id);
+
     const result = await query(sql, [
-      product_name !== undefined ? product_name : existing.product_name,
-      product_slug !== undefined ? product_slug : existing.product_slug,
-      category_id !== undefined ? category_id : existing.category_id,
-      vendor_id !== undefined ? vendor_id : existing.vendor_id,
+      product_name !== undefined && String(product_name).trim() ? product_name.trim() : existing.product_name,
+      product_slug !== undefined && String(product_slug).trim() ? product_slug.trim() : existing.product_slug,
+      finalCategoryId,
+      finalVendorId,
       description !== undefined ? description : existing.description,
-      price !== undefined ? price : existing.price,
-      discounted_price !== undefined ? discounted_price : existing.discounted_price,
-      quantity_in_stock !== undefined ? quantity_in_stock : existing.quantity_in_stock,
-      sku !== undefined ? (sku && sku.trim() ? sku.trim() : null) : existing.sku,
-      is_active !== undefined ? is_active : existing.is_active,
-      is_featured !== undefined ? is_featured : existing.is_featured,
-      JSON.stringify(uploadedImages || []),
-      variants !== undefined ? JSON.stringify(variants || []) : JSON.stringify(existing.variants || []),
+      finalPrice !== null ? finalPrice : existing.price,
+      finalDiscountedPrice,
+      finalQty !== null ? finalQty : existing.quantity_in_stock,
+      sku !== undefined ? (sku && String(sku).trim() ? String(sku).trim() : null) : existing.sku,
+      is_active !== undefined ? Boolean(is_active) : existing.is_active,
+      is_featured !== undefined ? Boolean(is_featured) : existing.is_featured,
+      cleanJson(uploadedImages, existing.images),
+      cleanJson(variants, existing.variants),
       id
     ]);
 
-    if (featured_type !== undefined) {
+    if (featured_type !== undefined && featured_type !== null) {
       await query(`DELETE FROM product_campaigns WHERE product_id = $1 AND campaign_type = 'SECTION' AND campaign_name NOT LIKE 'DEALS_ON_%';`, [id]);
       if (featured_type) {
         const parts = featured_type.split(',').map(s => s.trim()).filter(Boolean);
@@ -644,7 +681,7 @@ export const updateProduct = async (req, res, next) => {
         }
       }
     }
-    if (landing_section !== undefined) {
+    if (landing_section !== undefined && landing_section !== null) {
       await query(`DELETE FROM product_campaigns WHERE product_id = $1 AND campaign_type = 'SECTION' AND campaign_name LIKE 'DEALS_ON_%';`, [id]);
       if (landing_section) {
         const parts = landing_section.split(',').map(s => s.trim()).filter(Boolean);
@@ -653,7 +690,7 @@ export const updateProduct = async (req, res, next) => {
         }
       }
     }
-    if (occasion !== undefined) {
+    if (occasion !== undefined && occasion !== null) {
       await query(`DELETE FROM product_campaigns WHERE product_id = $1 AND campaign_type = 'OCCASION';`, [id]);
       if (occasion) {
         const parts = occasion.split(',').map(s => s.trim()).filter(Boolean);
