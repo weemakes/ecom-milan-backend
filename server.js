@@ -33,6 +33,9 @@ app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/vendors', vendorCrudRoutes);
 app.use('/api/customers', customerRoutes);
+app.use('/api/payment', paymentRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/razorpay', paymentRoutes);
 app.use('/api', paymentRoutes);
 
 

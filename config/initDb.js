@@ -84,6 +84,24 @@ export const initDb = async () => {
       );
     `);
 
+    // Ensure all required order columns exist
+    const alterOrdersQueries = [
+      `ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_number VARCHAR(50);`,
+      `ALTER TABLE orders ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;`,
+      `ALTER TABLE orders ADD COLUMN IF NOT EXISTS vendor_id UUID;`,
+      `ALTER TABLE orders ADD COLUMN IF NOT EXISTS items JSONB DEFAULT '[]'::jsonb;`,
+      `ALTER TABLE orders ADD COLUMN IF NOT EXISTS subtotal DECIMAL(12, 2) DEFAULT 0;`,
+      `ALTER TABLE orders ADD COLUMN IF NOT EXISTS total_discount DECIMAL(12, 2) DEFAULT 0;`,
+      `ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_charge DECIMAL(12, 2) DEFAULT 0;`,
+      `ALTER TABLE orders ADD COLUMN IF NOT EXISTS grand_total DECIMAL(12, 2) DEFAULT 0;`,
+      `ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_address JSONB;`,
+      `ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_method VARCHAR(50);`
+    ];
+    for (const q of alterOrdersQueries) {
+      await query(q).catch(err => console.error("Error altering orders table:", err));
+    }
+
+
     // 6. Order Items Table (Split per vendor/product)
     await query(`
       CREATE TABLE IF NOT EXISTS order_items (
