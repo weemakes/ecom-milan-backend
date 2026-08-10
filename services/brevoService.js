@@ -112,13 +112,20 @@ export const generateInvoicePDF = (order, itemDetails, shippingAddress, paymentM
       // Draw a line
       doc.moveTo(50, 130).lineTo(550, 130).strokeColor('#e5e7eb').lineWidth(1).stroke();
 
+      // Safe defaults
+      const safeShipping = shippingAddress || {};
+      const fullName = safeShipping.fullName || 'Valued Customer';
+      const phone = safeShipping.phone || 'N/A';
+      const email = safeShipping.email || 'N/A';
+      const addressText = [safeShipping.address, safeShipping.city, safeShipping.state].filter(Boolean).join(', ') + (safeShipping.zipCode ? ` - ${safeShipping.zipCode}` : '');
+
       // --- Shipping Info ---
       doc.fillColor('#1f2937').fontSize(12).text('Shipping Details', 50, 150, { underline: true });
       doc.fillColor('#4b5563').fontSize(10)
-         .text(`Name: ${shippingAddress.fullName}`, 50, 175)
-         .text(`Phone: +91 ${shippingAddress.phone}`, 50, 190)
-         .text(`Email: ${shippingAddress.email}`, 50, 205)
-         .text(`Address: ${shippingAddress.address}, ${shippingAddress.city}, ${shippingAddress.state} - ${shippingAddress.zipCode}`, 50, 220, { width: 500 });
+         .text(`Name: ${fullName}`, 50, 175)
+         .text(`Phone: +91 ${phone}`, 50, 190)
+         .text(`Email: ${email}`, 50, 205)
+         .text(`Address: ${addressText || 'N/A'}`, 50, 220, { width: 500 });
 
       // Draw a line
       doc.moveTo(50, 260).lineTo(550, 260).strokeColor('#e5e7eb').lineWidth(1).stroke();
@@ -140,12 +147,16 @@ export const generateInvoicePDF = (order, itemDetails, shippingAddress, paymentM
 
       // Table Rows
       doc.fillColor('#334155').fontSize(9);
-      for (const item of itemDetails) {
-        const nameHeight = doc.heightOfString(item.product_name, { width: 280 });
-        doc.text(item.product_name, 50, y, { width: 280 })
-           .text(item.qty.toString(), 350, y, { width: 30, align: 'right' })
-           .text(`₹${parseFloat(item.selling_price || 0).toLocaleString('en-IN')}`, 400, y, { width: 60, align: 'right' })
-           .text(`₹${(item.qty * parseFloat(item.selling_price || 0)).toLocaleString('en-IN')}`, 480, y, { width: 70, align: 'right' });
+      const items = Array.isArray(itemDetails) ? itemDetails : [];
+      for (const item of items) {
+        const prodName = String(item.product_name || 'Product Item');
+        const qty = item.qty || 1;
+        const price = parseFloat(item.selling_price || 0);
+        const nameHeight = doc.heightOfString(prodName, { width: 280 });
+        doc.text(prodName, 50, y, { width: 280 })
+           .text(qty.toString(), 350, y, { width: 30, align: 'right' })
+           .text(`₹${price.toLocaleString('en-IN')}`, 400, y, { width: 60, align: 'right' })
+           .text(`₹${(qty * price).toLocaleString('en-IN')}`, 480, y, { width: 70, align: 'right' });
         
         y += Math.max(nameHeight, 15) + 10;
         doc.moveTo(50, y - 5).lineTo(550, y - 5).strokeColor('#f1f5f9').lineWidth(0.5).stroke();

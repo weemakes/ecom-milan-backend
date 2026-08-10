@@ -1,10 +1,8 @@
 import pkg from 'pg';
 import dotenv from 'dotenv';
-
 dotenv.config();
 
 const { Pool } = pkg;
-
 const sslOption = process.env.PG_SSL === 'true' ? { rejectUnauthorized: false } : false;
 
 const pool = new Pool({
@@ -16,18 +14,15 @@ const pool = new Pool({
   ...(sslOption ? { ssl: sslOption } : {}),
 });
 
-let isConnectedLogged = false;
-pool.on('connect', () => {
-  if (!isConnectedLogged) {
-    console.log('Connected to PostgreSQL database');
-    isConnectedLogged = true;
+async function run() {
+  try {
+    const res = await pool.query('SELECT id FROM users LIMIT 1');
+    console.log('User ID:', res.rows[0]?.id);
+  } catch (err) {
+    console.error(err);
+  } finally {
+    pool.end();
   }
-});
+}
 
-pool.on('error', (err) => {
-  console.error('Unexpected error on idle client', err);
-  // process.exit(-1);
-});
-
-export const query = (text, params) => pool.query(text, params);
-export default pool;
+run();

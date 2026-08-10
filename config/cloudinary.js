@@ -28,7 +28,7 @@ export const uploadToCloudinary = async (base64Image, folder = 'ecom-milan') => 
     });
     return uploadRes.secure_url;
   } catch (error) {
-    console.error('Cloudinary upload error:', error);
-    throw error;
+    console.error('Cloudinary upload error:', error?.message || error);
+    return base64Image;
   }
 };
