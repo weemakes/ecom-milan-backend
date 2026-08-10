@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { initDb } from './config/initDb.js';
+// import { initDb } from './config/initDb.js';
 
 import vendorRoutes from './routes/vendorRoutes.js';
 import cmsRoutes from './routes/cmsRoutes.js';
