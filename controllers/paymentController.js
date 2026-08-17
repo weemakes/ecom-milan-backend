@@ -103,7 +103,7 @@ export const createQrCode = async (req, res) => {
     try {
       const qrCode = await razorpay.qrCode.create({
         type: 'upi_qr',
-        name: 'Milan E-Commerce',
+        name: 'Mehr Zari',
         usage: 'single_use',
         fixed_amount: true,
         payment_amount: amountInPaise,
@@ -123,7 +123,7 @@ export const createQrCode = async (req, res) => {
     if (!qrImageUrl) {
       // Build dynamic UPI intent URI encoding exact amount & order ID
       const vpa = 'razorpay@icici'; // Official Razorpay Merchant VPA
-      const merchantName = encodeURIComponent('Milan E-Commerce');
+      const merchantName = encodeURIComponent('Mehr Zari');
       const upiString = `upi://pay?pa=${vpa}&pn=${merchantName}&am=${amountInRupees}&cu=INR&tr=${order.id}&tn=Order%20Payment%20${order.id}`;
 
       qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(
