@@ -27,12 +27,16 @@ import {
   updateOccasion,
   deleteOccasion,
   getOrdersForAdmin,
-  updateOrderStatus
+  updateOrderStatus,
+  getCustomerOrders
 } from '../controllers/productController.js';
 
 const router = express.Router();
 
 // ─── Static routes FIRST (must be before /:id) ─────────────────────────────
+
+// Customer Orders endpoint
+router.get('/customer/orders/:user_id', getCustomerOrders);
 
 // Admin campaign endpoints
 router.get('/admin/all', getAllProductsForAdmin);

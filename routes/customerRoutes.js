@@ -3,12 +3,14 @@ import {
   subscribeCustomer,
   getCustomers,
   deleteCustomer,
+  customerLogin,
 } from '../controllers/customerController.js';
 
 const router = express.Router();
 
-// Customer Leads Routes
+// Customer Leads & Auth Routes
 router.post('/subscribe', subscribeCustomer);
+router.post('/login', customerLogin);
 router.get('/', getCustomers);
 router.delete('/:id', deleteCustomer);
 
