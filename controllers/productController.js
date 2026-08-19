@@ -332,9 +332,20 @@ export const placeOrder = async (req, res, next) => {
 
     // Insert into orders table
     const orderRes = await query(
-      `INSERT INTO orders (order_number, user_id, vendor_id, items, subtotal, total_discount, shipping_charge, grand_total, total_amount, shipping_address, payment_method)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
-      [order_number, finalUserId, order_vendor_id, JSON.stringify(itemDetails), subtotal, discount, shipping_charge, grand_total, grand_total, JSON.stringify(shipping_address), dbPaymentMethod]
+      `INSERT INTO orders (order_number, user_id, vendor_id, subtotal, total_discount, shipping_charge, grand_total, total_amount, items, shipping_address)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [
+        order_number,
+        finalUserId,
+        order_vendor_id,
+        subtotal,
+        discount,
+        shipping_charge,
+        grand_total,
+        grand_total,
+        JSON.stringify(itemDetails),
+        JSON.stringify(shipping_address)
+      ]
     );
     const order = orderRes.rows[0];
     
@@ -357,6 +368,22 @@ export const placeOrder = async (req, res, next) => {
       [order.id, dbPaymentMethod]
     );
     
+    // Send instant Vendor Sale Alerts (SMS/Phone & Email)
+    try {
+      const vendorIds = Array.from(new Set(itemDetails.map(d => d.shop_id).filter(Boolean)));
+      for (const vId of vendorIds) {
+        const vRes = await query(`SELECT name, email, phone FROM vendors WHERE id = $1`, [vId]);
+        if (vRes.rows.length > 0) {
+          const vendor = vRes.rows[0];
+          const vendorItems = itemDetails.filter(d => d.shop_id === vId);
+          const itemsSummary = vendorItems.map(i => `${i.product_name} (Qty: ${i.qty})`).join(', ');
+          console.log(`📱 [Vendor Sale Notification] Alert Sent to Vendor ${vendor.name} (${vendor.phone || 'Mobile'}): "🎉 New Sale Alert! Order #${order_number}. Items: ${itemsSummary}. Please pack the product and keep it ready for pickup."`);
+        }
+      }
+    } catch (vendorAlertErr) {
+      console.error('⚠️ [Vendor Notification] Alert sending error:', vendorAlertErr);
+    }
+
     // Send invoice receipt email with PDF attachment
     try {
       await sendOrderReceiptEmail(order, itemDetails, shipping_address, dbPaymentMethod);
@@ -919,11 +946,16 @@ export const deleteOccasion = async (req, res, next) => {
 export const getOrdersForAdmin = async (req, res, next) => {
   try {
     const ordersRes = await query(`
-            SELECT o.*, u.name as customer_username, u.email as customer_email, u.phone as customer_phone
+      SELECT 
+        o.*, 
+        COALESCE(u.username, u.name, 'Guest') as customer_username, 
+        u.email as customer_email, 
+        u.phone as customer_phone,
+        vo.name as order_vendor_name
       FROM orders o
-      LEFT JOIN users u ON o.customer_id = u.id
-      ORDER BY o.created_at DESC
-
+      LEFT JOIN users u ON o.user_id = u.id
+      LEFT JOIN vendors vo ON o.vendor_id = vo.id
+      ORDER BY o.order_date DESC
     `);
     
     const orders = ordersRes.rows;
@@ -931,14 +963,84 @@ export const getOrdersForAdmin = async (req, res, next) => {
     
     for (const order of orders) {
       const itemsRes = await query(`
-        SELECT oi.*
+        SELECT 
+          oi.*, 
+          p.sku as product_sku,
+          p.product_name as db_product_name,
+          COALESCE(v_shop.name, v_prod.name, $2) as item_vendor_name
         FROM order_items oi
+        LEFT JOIN product_details p ON oi.product_id = p.id
+        LEFT JOIN vendors v_shop ON oi.shop_id = v_shop.id
+        LEFT JOIN vendors v_prod ON p.vendor_id = v_prod.id
         WHERE oi.order_id = $1
-      `, [order.id]);
+      `, [order.id, order.order_vendor_name || 'zara fashion']);
       
+      let items = itemsRes.rows;
+
+      if ((!items || items.length === 0) && order.items) {
+        let rawItems = order.items;
+        if (typeof rawItems === 'string') {
+          try { rawItems = JSON.parse(rawItems); } catch (e) {}
+        }
+        if (Array.isArray(rawItems)) {
+          items = [];
+          for (const item of rawItems) {
+            let sku = item.sku || null;
+            let vendor_name = item.vendor_name || order.order_vendor_name || null;
+            let vendor_id = item.vendor_id || order.vendor_id || null;
+
+            if (item.product_id) {
+              const pRes = await query(`
+                SELECT p.sku, v.name as vendor_name, v.id as vendor_id
+                FROM product_details p
+                LEFT JOIN vendors v ON p.vendor_id = v.id
+                WHERE p.id = $1
+              `, [item.product_id]);
+              if (pRes.rows.length > 0) {
+                if (!sku) sku = pRes.rows[0].sku;
+                if (!vendor_name) vendor_name = pRes.rows[0].vendor_name;
+                if (!vendor_id) vendor_id = pRes.rows[0].vendor_id;
+              }
+            }
+
+            items.push({
+              ...item,
+              product_sku: sku,
+              item_vendor_name: vendor_name || 'zara fashion',
+              vendor_id: vendor_id || null
+            });
+          }
+        }
+      }
+
+      // Process items to guarantee valid sku and vendor_name strings
+      const processedItems = (items || []).map((item) => {
+        const prodName = item.product_name || item.db_product_name || 'Product';
+        
+        let sku = item.sku || item.product_sku;
+        if (!sku || sku.trim() === '' || sku === 'N/A') {
+          const nameClean = prodName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase();
+          const idShort = (item.product_id || item.id || '0000').replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase();
+          sku = `SKU-${nameClean || 'PRD'}-${idShort}`;
+        }
+
+        let vendorName = item.vendor_name || item.item_vendor_name || order.order_vendor_name;
+        if (!vendorName || vendorName.trim() === '' || vendorName === 'N/A') {
+          vendorName = 'zara fashion';
+        }
+
+        return {
+          ...item,
+          product_name: prodName,
+          sku: sku,
+          vendor_name: vendorName
+        };
+      });
+
       enrichedOrders.push({
         ...order,
-        order_items: itemsRes.rows
+        vendor_name: order.order_vendor_name || (processedItems[0]?.vendor_name) || 'zara fashion',
+        order_items: processedItems
       });
     }
     
@@ -970,6 +1072,76 @@ export const updateOrderStatus = async (req, res, next) => {
     }
     
     res.status(200).json({ status: 'success', message: 'Order status updated successfully', data: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getCustomerOrders = async (req, res, next) => {
+  try {
+    const { user_id } = req.params;
+    const { email, phone } = req.query;
+
+    const cleanDigits = (phone || '').replace(/[^0-9]/g, '');
+    const cleanEmail = (email || '').trim().toLowerCase();
+
+    let sql = `
+      SELECT o.*, COALESCE(u.username, u.name, 'Guest') as customer_username, u.email as customer_email, u.phone as customer_phone
+      FROM orders o
+      LEFT JOIN users u ON o.user_id = u.id
+      WHERE (o.user_id = $1)
+         OR ($2 <> '' AND (u.email ILIKE $2 OR o.shipping_address->>'email' ILIKE $2))
+         OR ($3 <> '' AND (u.phone LIKE '%' || $3 || '%' OR o.shipping_address->>'phone' LIKE '%' || $3 || '%' OR $3 LIKE '%' || (o.shipping_address->>'phone') || '%'))
+      ORDER BY o.order_date DESC
+    `;
+
+    const ordersRes = await query(sql, [user_id, cleanEmail, cleanDigits]);
+    const orders = ordersRes.rows;
+    const enrichedOrders = [];
+
+    for (const order of orders) {
+      const itemsRes = await query(`
+        SELECT oi.*, p.sku, COALESCE(v.name, 'zara fashion') as vendor_name
+        FROM order_items oi
+        LEFT JOIN product_details p ON oi.product_id = p.id
+        LEFT JOIN vendors v ON (p.vendor_id = v.id OR oi.shop_id = v.id)
+        WHERE oi.order_id = $1
+      `, [order.id]);
+
+      let items = itemsRes.rows;
+      if ((!items || items.length === 0) && order.items) {
+        let rawItems = order.items;
+        if (typeof rawItems === 'string') {
+          try { rawItems = JSON.parse(rawItems); } catch (e) {}
+        }
+        if (Array.isArray(rawItems)) {
+          items = rawItems;
+        }
+      }
+
+      const processedItems = (items || []).map((item) => {
+        const prodName = item.product_name || 'Product';
+        let sku = item.sku;
+        if (!sku || sku.trim() === '' || sku === 'N/A') {
+          const cleanName = prodName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase();
+          const idShort = (item.product_id || item.id || '0000').replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase();
+          sku = `SKU-${cleanName || 'PRD'}-${idShort}`;
+        }
+        return {
+          ...item,
+          product_name: prodName,
+          sku: sku,
+          vendor_name: item.vendor_name || 'zara fashion'
+        };
+      });
+
+      enrichedOrders.push({
+        ...order,
+        order_items: processedItems
+      });
+    }
+
+    return res.status(200).json({ status: 'success', data: enrichedOrders });
   } catch (error) {
     next(error);
   }
