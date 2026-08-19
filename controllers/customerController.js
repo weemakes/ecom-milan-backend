@@ -64,14 +64,23 @@ export const subscribeCustomer = async (req, res) => {
  */
 export const getCustomers = async (req, res) => {
   try {
-    const result = await query(
-      `SELECT * FROM customer_leads ORDER BY created_at DESC`
-    );
+    const leadsRes = await query(`SELECT id, email_or_phone, source, coupon_code, created_at FROM customer_leads ORDER BY created_at DESC`);
+    const contactRes = await query(`SELECT id, name, email, phone, topic, message, created_at FROM contact_inquiries ORDER BY created_at DESC`);
+
+    const contactFormatted = contactRes.rows.map(item => ({
+      id: item.id,
+      email_or_phone: `${item.name} | ${item.email} ${item.phone ? '| ' + item.phone : ''}`,
+      source: `CONTACT_FORM (${item.topic})`,
+      coupon_code: item.message,
+      created_at: item.created_at
+    }));
+
+    const combined = [...contactFormatted, ...leadsRes.rows];
 
     return res.status(200).json({
       status: 'success',
-      count: result.rows.length,
-      data: result.rows,
+      count: combined.length,
+      data: combined,
     });
   } catch (error) {
     console.error('Error fetching customers:', error);
@@ -193,5 +202,36 @@ export const customerLogin = async (req, res) => {
   } catch (error) {
     console.error('Error in customerLogin:', error);
     return res.status(500).json({ status: 'error', message: error.message || 'Failed to authenticate customer.' });
+  }
+};
+
+/**
+ * Save Contact Us inquiry to database
+ * POST /api/customers/contact
+ */
+export const submitContactInquiry = async (req, res) => {
+  try {
+    const { name, email, phone, topic, message } = req.body;
+
+    if (!name || !email || !message) {
+      return res.status(400).json({ status: 'error', message: 'Name, email, and message are required.' });
+    }
+
+    const result = await query(
+      `INSERT INTO contact_inquiries (name, email, phone, topic, message)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [name.trim(), email.trim(), phone ? phone.trim() : '', topic || 'General', message.trim()]
+    );
+
+    console.log(`📩 [Contact Form Inquiry Received] From: ${name} (${email}, ${phone || 'No Phone'}) | Topic: ${topic} | Message: ${message}`);
+
+    return res.status(201).json({
+      status: 'success',
+      message: 'Inquiry received successfully!',
+      data: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error saving contact inquiry:', error);
+    return res.status(500).json({ status: 'error', message: 'Failed to submit contact inquiry.' });
   }
 };
